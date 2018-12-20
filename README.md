@@ -7,12 +7,16 @@ Quantitative Financial FrameWork
 
 -------------------------------------------------------------
 
+![pypidownloads](https://img.shields.io/pypi/dm/quantaxis.svg)
+![pypidownloads](https://img.shields.io/pypi/dw/quantaxis.svg)
+![pypidownloads](https://img.shields.io/pypi/dd/quantaxis.svg)
+
 
 
 [![Github workers](https://img.shields.io/github/watchers/quantaxis/quantaxis.svg?style=social&label=Watchers&)](https://github.com/quantaxis/quantaxis/watchers)
 [![GitHub stars](https://img.shields.io/github/stars/quantaxis/quantaxis.svg?style=social&label=Star&)](https://github.com/quantaxis/quantaxis/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/quantaxis/quantaxis.svg?style=social&label=Fork&)](https://github.com/quantaxis/quantaxis/fork)
-[![PYPI_DOWNLOADS](https://img.shields.io/pypi/dw/quantaxis.svg)](https://pypi.org/project/quantaxis)
+
 
 > ENGLISH DOCUMENTS PLEASE CLICK [THIS](README_ENG.md)
 
@@ -30,12 +34,13 @@ Quantitative Financial FrameWork
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/d8504e4af33747bb8117579212425af9)](https://www.codacy.com/app/yutiansut/QUANTAXIS?utm_source=github.com&utm_medium=referral&utm_content=yutiansut/QUANTAXIS&utm_campaign=badger)
 [![StackShare](https://img.shields.io/badge/tech-stack-0690fa.svg?style=flat)](https://stackshare.io/yutiansut/quantaxis)
 ![QAS](https://img.shields.io/badge/QAS-%200.0.8-brown.svg)
-![python](https://img.shields.io/badge/python-%203.6/3.5/3.4/win/ubuntu-darkgrey.svg)
+![python](https://img.shields.io/badge/python-%203.7/3.6/3.5/win/ubuntu-darkgrey.svg)
 ![Npm](https://img.shields.io/badge/Npm-%200.4.0-yellow.svg)
 ![author](https://img.shields.io/badge/Powered%20by-%20%20yutiansut-red.svg)
 ![license](https://img.shields.io/badge/License-%20MIT-brightgreen.svg)
 [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FQUANTAXIS%2FQUANTAXIS.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2FQUANTAXIS%2FQUANTAXIS?ref=badge_shield)
 [![Waffle.io - Issues in progress](https://badge.waffle.io/yutiansut/QUANTAXIS.png?label=in%20progress&title=In%20Progress)](http://waffle.io/yutiansut/QUANTAXIS)
+[![Reviewed by Hound](https://img.shields.io/badge/Reviewed_by-Hound-8E64B0.svg)](https://houndci.com)
 
 
 
@@ -166,11 +171,17 @@ QUANTAXIS量化金融策略框架,是一个面向中小型策略团队的量化�
 
 #### 1.6.2 期货(python3 CTP win/mac/linux)
 
-参见 [LINUX CTP](QUANTAXIS_Trade/LINUXCTP)
+1. CTP 的websocket交易 :  simnow demo:  ws://www.yutiansut.com:7988
+2. CTP 的海风broker魔改封装:  [QA_AtBroker](https://github.com/QUANTAXIS/QA_AtBroker)
 
-参见 [WINDOWS CTP](QUANTAXIS_Trade/WindowsCTP)
 
-### 1.7 网站HTTP服务
+关于websocket交易(可能存在一些不确定的bug 因此暂时不开放):
+
+- 目前仅提供demo/ 模拟盘接入
+- 具体需要私聊我 yutiansut@qq.com
+
+
+### 1.7 网站HTTP服务(目前已经独立为 QUANTAXIS_WEBSERVICE)
 
 #### 1.7.1 网站后台标准化接口
 

@@ -3,7 +3,10 @@
 <!-- TOC -->
 
 - [QUANTAXIS 更新纪要](#quantaxis-更新纪要)
-    - [1.2.0(unreleased)](#120unreleased)
+    - [1.2.3 (unreleased)](#123unreleased)
+    - [1.2.2 ](#122)
+    - [1.2.1 ](#121)
+    - [1.2.0](#120)
     - [1.1.10](#1110)
     - [1.1.9](#119)
     - [1.1.8](#118)
@@ -67,11 +70,42 @@
     - [1.0.25](#1025)
 
 <!-- /TOC -->
+## 1.2.3 (unreleased)
+
+1. 感谢@追梦, QA_Account的receive_simpledeal的成交方式中的 股票市场的印花税计算修正
+2. 改写@地下的地下铁, 修正QA_Risk中计算assets的一个停牌无数据的bug
+3. 感谢@风筝 修复了单标的多市场的获取bug
+
+## 1.2.2
+
+1. 重新构建docker compose，把主镜像拆分jupyter, cron和web三个镜像
+2. 修改了QAFetch的mongo查询语句(感谢几何大佬) 优雅的在查询中去掉了_id  
+3. 修正期货的DataStruct格式,统一volume字段
+4. 更新交易日历到2019-12-31
+
+```
+mongo文档参见 https://docs.mongodb.com/manual/tutorial/project-fields-from-query-results/#return-the-specified-fields-and-the-id-field-only
+```
 
 
-## 1.2.0(unreleased)
+## 1.2.1
 
+1. 修改回测的时候的账户结算(终于算对了不容易...) @CODE-ORANGE
+具体看 [期货冻结-释放资金示例](https://github.com/QUANTAXIS/QUANTAXIS/blob/master/EXAMPLE/test_backtest/FUTURE/%E6%9C%9F%E8%B4%A7TEST.ipynb)
+2. 增加 对于单月合约的存储  save future_all/ future_day_all / future_min_all
+3. 增加对于future_data 的获取的去重处理
+4. @barretthugh 修改了复权部分的代码
+5. 优化了docker部分的使用
+6. 增加对于jqdata的使用示例
+7. 增加了1min的股票采样
+8. 增加CTPtick的获取和采样
 
+## 1.2.0
+
+1. 增加对期货保证金冻结的修改
+2. 增加对于TALIB的支持, 在talib_indicators中调用
+3. 增加对于50ETF的支持
+4. 优化cirrusCI的支持
 
 
 ## 1.1.10

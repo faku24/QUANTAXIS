@@ -445,7 +445,7 @@ class QA_Account(QA_Worker):
             data.date = pd.to_datetime(data.date)
             data = data.set_index(['date', 'account_cookie'])
             res = data[~data.index.duplicated(keep='last')].sort_index()
-
+            # 这里会导致股票停牌时的持仓也被计算 但是计算market_value的时候就没了
             return pd.concat([res.reset_index().set_index('date'), pd.Series(data=None, index=pd.to_datetime(self.trade_range).set_names('date'), name='predrop')], axis=1)\
                 .ffill().drop(['predrop'], axis=1).reset_index().set_index(['date', 'account_cookie']).sort_index()
     # 计算assets的时候 需要一个market_data=QA.QA_fetch_stock_day_adv(list(data.columns),data.index[0],data.index[-1])
@@ -554,14 +554,20 @@ class QA_Account(QA_Worker):
         if self.market_type == MARKET_TYPE.FUTURE_CN:
             # 期货不收税
             # 双边手续费 也没有最小手续费限制
+            
             commission_fee = self.commission_coeff * \
                 abs(trade_money)
             tax_fee = 0
         elif self.market_type == MARKET_TYPE.STOCK_CN:
+
             commission_fee = self.commission_coeff * \
                 abs(trade_money)
-            tax_fee = self.tax_coeff * \
-                abs(trade_money)
+
+            commission_fee = 5 if commission_fee < 5 else commission_fee
+            if int(trade_towards) > 0:
+                tax_fee = 0  # 买入不收印花税
+            else:
+                tax_fee  = self.tax_coeff * abs(trade_money)
 
         trade_money += (commission_fee+tax_fee)
 
@@ -694,7 +700,9 @@ class QA_Account(QA_Worker):
 
             tax_fee = 0  # 买入不收印花税
 
+        _trade_money_frozen = abs(trade_money) + commission_fee+ tax_fee
         trade_money += (commission_fee+tax_fee)
+        
 
         if self.cash[-1] > trade_money:
             self.time_index.append(trade_time)
@@ -720,7 +728,7 @@ class QA_Account(QA_Worker):
                         (self.frozen[code][trade_towards]['money']*self.frozen[code][trade_towards]['amount'])+abs(trade_money))/(self.frozen[code][trade_towards]['amount']+trade_amount)
                     self.frozen[code][trade_towards]['amount'] += trade_amount
 
-                    self.cash.append(self.cash[-1]-abs(trade_money))
+                    self.cash.append(self.cash[-1]-_trade_money_frozen)
                 elif trade_towards in [ORDER_DIRECTION.BUY_CLOSE, ORDER_DIRECTION.SELL_CLOSE]:
                     # 平仓单释放现金
                     # if trade_towards == ORDER_DIRECTION.BUY_CLOSE:
@@ -1118,6 +1126,8 @@ class QA_Account(QA_Worker):
             end {str]} -- [description]
         """
         return self.history_table.set_index('datetime', drop=False).loc[slice(pd.Timestamp(start), pd.Timestamp(end))]
+
+
 
 
 class Account_handler():
