@@ -2,7 +2,7 @@
 #
 # The MIT License (MIT)
 #
-# Copyright (c) 2016-2018 yutiansut/QUANTAXIS
+# Copyright (c) 2016-2019 yutiansut/QUANTAXIS
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -25,18 +25,23 @@
 import copy
 import datetime
 import warnings
-
+import random
 import numpy as np
 import pandas as pd
+from pymongo import DESCENDING, ASCENDING
 
 from QUANTAXIS import __version__
 from QUANTAXIS.QAARP.market_preset import MARKET_PRESET
 from QUANTAXIS.QAEngine.QAEvent import QA_Worker
 from QUANTAXIS.QAMarket.QAOrder import QA_Order, QA_OrderQueue
+from QUANTAXIS.QAMarket.QAPosition import QA_Position, QA_PMS
 from QUANTAXIS.QASU.save_account import save_account, update_account
+from QUANTAXIS.QAUtil.QASetting import DATABASE
 from QUANTAXIS.QAUtil.QADate_trade import (
+    QA_util_if_trade,
     QA_util_get_next_day,
-    QA_util_get_trade_range
+    QA_util_get_trade_range,
+    QA_util_future_to_tradedatetime
 )
 from QUANTAXIS.QAUtil.QAParameter import (
     ACCOUNT_EVENT,
@@ -47,9 +52,12 @@ from QUANTAXIS.QAUtil.QAParameter import (
     MARKET_TYPE,
     ORDER_DIRECTION,
     ORDER_MODEL,
+    ORDER_STATUS,
     RUNNING_ENVIRONMENT,
-    TRADE_STATUS
+    TRADE_STATUS,
+    EXCHANGE_ID
 )
+from QUANTAXIS.QAFetch.Fetcher import QA_quotation
 from QUANTAXIS.QAUtil.QARandom import QA_util_random_with_topic
 
 # 2017/6/4修改: 去除总资产的动态权益计算
@@ -104,16 +112,12 @@ class QA_Account(QA_Worker):
     QA_Account不会基于行情计算市值,因此都只会对应记录证券数量和现金资产
 
 
-
-
     @2018/12/23
     当我们继承/复用 QA_Account 的时候, 我们需要实现什么
 
     - init_cash
     - init_hold
     - broker
-
-
 
     @2018/12/24
     账户需要追踪
@@ -126,14 +130,25 @@ class QA_Account(QA_Worker):
 
     任意时间点的信息截面
 
+
+    @2019/05/07
+    # 关于PMS/close_available
+    在期货中, 我们需要account具有多空同时开仓对锁的功能, 而目前基于交易结算的并不满足
+
+    引入 close_available 和 POSITION的概念
+
+
+
+
+
     """
 
     def __init__(
             self,
-            strategy_name=None,
-            user_cookie=None,
-            portfolio_cookie=None,
+            user_cookie: str,
+            portfolio_cookie: str,
             account_cookie=None,
+            strategy_name=None,
             market_type=MARKET_TYPE.STOCK_CN,
             frequence=FREQUENCE.DAY,
             broker=BROKER_TYPE.BACKETEST,
@@ -145,7 +160,11 @@ class QA_Account(QA_Worker):
             allow_t0=False,
             allow_sellopen=False,
             allow_margin=False,
-            running_environment=RUNNING_ENVIRONMENT.BACKETEST
+            running_environment=RUNNING_ENVIRONMENT.BACKETEST,
+            auto_reload=False,
+            generated='direct',
+            start=None,
+            end=None
     ):
         """
 
@@ -163,6 +182,9 @@ class QA_Account(QA_Worker):
         :param [Bool] allow_t0:          是否允许t+0交易  默认False
         :param [Bool] allow_sellopen:    是否允许卖空开仓  默认False
         :param [Bool] allow_margin:      是否允许保证金交易 默认False
+        :param [Bool] auto_reload:       是否自动从数据库中同步数据
+        :param [Bool] generated:         从哪里生成==> directed: 直接生成  portfolio: 组合生成
+
 
         ### 注意
         >>>>>>>>>>>>>
@@ -223,34 +245,94 @@ class QA_Account(QA_Worker):
                 -1, amount # 空单待平仓
             }
         }
+
+
+        >>>>>>>>>>>>>>>>>>>>>>>>>
+
+        init_hold面临的一个改进和问题:
+
+        >> init_hold就是简化的position模型
+
+        init_hold目前是一个类似这样的字段:
+
+        {'000001':100}
+
+        实际上我们需要对于他进行进一步的改进, 用以用于支持更多场景:
+
+
+        {
+        'code': 000001, #品种名称
+        'instrument_id': 000001,
+        'name': '中国平安', #
+        'market_type': QA.MARKET_TYPE.STOCK_CN,
+        'exchange_id': QA.EXCHANGE_ID.SZSE, #交易所ID
+        'volume_short': 0, #空头持仓数量  
+        'volume_long': 100,  #持仓数量
+
+        'volume_long_today': 0,
+        'volume_long_his': 1,
+        'volume_long': 1,
+        'volume_long_frozen_today': 0,
+        'volume_long_frozen_his': 0,
+        'volume_long_frozen': 0,
+        'volume_short_today': 0,
+        'volume_short_his: 0,
+        'volume_short': 0,
+        'volume_short_frozen_today': 0,
+        'volume_short_frozen_his': 0,
+        'volume_short_frozen': 0,
+
+        'position_price_long': 9.5,   #多头成本价
+        'position_cost_long': 9500,   # 多头成本
+        'position_price_short': 0,
+        'position_cost_short': 0,
+
+        'open_price_long': 9.5,     #多头开仓价
+        'open_cost_long': 9500,     #多头开仓成本
+        'open_price_short': 0,      #空头开仓价
+        'open_cost_short': 0,       #空头成本
+
+        'margin_long': 0,       # 多头保证金
+        'margin_short': 0,
+        'margin': 0
+         }
+
+         当传入后, 我们依然要进行一些判断:
+
+         1. 是否需要settle
+
+         如果是当日传入 则不需要
         """
         super().__init__()
-        # warnings.warn('QUANTAXIS 1.0.46 has changed the init_assets ==> init_cash, please pay attention to this change if you using init_cash to initial an account class,\
-        #         ', DeprecationWarning, stacklevel=2)
+
         self._history_headers = [
-            'datetime', # 日期/时间
-            'code', # 品种
-            'price', # 成交价
-            'amount', # 成交数量(股票 股数  期货 手数)
-            'cash', # 现金
-            'order_id', # 本地订单号
-            'realorder_id', # 实际委托单号
-            'trade_id', # 成交单号
-            'account_cookie', # 账号id
-            'commission', # 手续费
+            'datetime',  # 日期/时间
+            'code',  # 品种
+            'price',  # 成交价
+            'amount',  # 成交数量(股票 股数  期货 手数)
+            'cash',  # 现金
+            'order_id',  # 本地订单号
+            'realorder_id',  # 实际委托单号
+            'trade_id',  # 成交单号
+            'account_cookie',  # 账号id
+            'commission',  # 手续费
             'tax',  # 税
-            'message', # 备注
-            'frozen' # 冻结资金
+            'message',  # 备注
+            'frozen',  # 冻结资金.
+            'direction',  # 方向,
+            'total_frozen'
         ]
         ########################################################################
         # 信息类:
-        self.strategy_name = strategy_name
+
+        if user_cookie is None or portfolio_cookie is None:
+            raise RuntimeError('QUANTAXIS 1.3.0升级: 需要在创建Account的时候指定用户名/组合名')
         self.user_cookie = user_cookie
+        self.strategy_name = strategy_name
         self.portfolio_cookie = portfolio_cookie
         self.account_cookie = QA_util_random_with_topic(
             'Acc'
         ) if account_cookie is None else account_cookie
-
         self.market_type = market_type
         self.broker = broker
         self.frequence = frequence
@@ -263,10 +345,28 @@ class QA_Account(QA_Worker):
         self.datetime = None
         self.running_time = datetime.datetime.now()
         self.quantaxis_version = __version__
+        self.client = DATABASE.account
+        self.start_ = start
+        self.end_ = end
+        ### 下面是数据库创建index部分, 此部分可能导致部分代码和原先不兼容
+        self.client.create_index(
+            [
+                ("account_cookie",
+                 ASCENDING),
+                ("user_cookie",
+                 ASCENDING),
+                ("portfolio_cookie",
+                 ASCENDING)
+            ],
+            unique=True
+        )
         ########################################################################
         # 资产类
-        self.orders = QA_OrderQueue()       # 历史委托单
+        self.orders = QA_OrderQueue() # 历史委托单
+        self.PMS = QA_PMS()
+                                      # self.risks = QA_RMS()
         self.init_cash = init_cash
+
         self.init_hold = pd.Series(
             init_hold,
             name='amount'
@@ -278,7 +378,7 @@ class QA_Account(QA_Worker):
         self.sell_available = copy.deepcopy(self.init_hold)
         self.buy_available = copy.deepcopy(self.init_hold)
         self.history = []
-        self.time_index = []
+        self.time_index_max = []
 
         # 在回测中, 每日结算后更新
         # 真实交易中, 为每日初始化/每次重新登录后的同步信息
@@ -309,9 +409,11 @@ class QA_Account(QA_Worker):
         if self.market_type is MARKET_TYPE.FUTURE_CN:
             self.allow_t0 = True
             self.allow_sellopen = True
+            self.allow_margin = True
 
-        if self.allow_t0 and self.allow_sellopen or self.market_type is MARKET_TYPE.FUTURE_CN:
-            self.load_marketpreset()
+        self.market_preset = MARKET_PRESET()
+        # if self.allow_t0 and self.allow_sellopen or self.market_type is MARKET_TYPE.FUTURE_CN:
+        #     self.load_marketpreset()
         """期货的多开/空开 ==> 资金冻结进保证金  frozen
 
         对应平仓的时候, 释放保证金
@@ -322,9 +424,16 @@ class QA_Account(QA_Worker):
         """
 
         self.frozen = {} # 冻结资金(保证金)
+        self.finishedOrderid = []
+
+        if auto_reload:
+            self.reload()
 
     def __repr__(self):
-        return '< QA_Account {} market: {}>'.format(self.account_cookie,self.market_type)
+        return '< QA_Account {} market: {}>'.format(
+            self.account_cookie,
+            self.market_type
+        )
 
     @property
     def message(self):
@@ -332,6 +441,8 @@ class QA_Account(QA_Worker):
         return {
             'source':
             'account',
+            'frequence':
+            self.frequence,
             'account_cookie':
             self.account_cookie,
             'portfolio_cookie':
@@ -348,6 +459,8 @@ class QA_Account(QA_Worker):
             str(self._currenttime),
             'allow_sellopen':
             self.allow_sellopen,
+            'allow_margin':
+            self.allow_margin,
             'allow_t0':
             self.allow_t0,
             'margin_level':
@@ -367,7 +480,7 @@ class QA_Account(QA_Worker):
             'history':
             self.history,
             'trade_index':
-            self.time_index,
+            self.time_index_max,
             'running_time':
             str(datetime.datetime.now())
             if self.running_time is None else str(self.running_time),
@@ -378,13 +491,17 @@ class QA_Account(QA_Worker):
             'start_date':
             self.start_date,
             'end_date':
-            self.end_date
+            self.end_date,
+            'frozen':
+            self.frozen,
+            'finished_id':
+            self.finishedOrderid
         }
 
     @property
     def freecash_precent(self):
         """剩余资金比例
-        
+
         Returns:
             float
         """
@@ -399,7 +516,7 @@ class QA_Account(QA_Worker):
 
     @property
     def init_hold_with_account(self):
-        """带account_id的初始化持仓
+        """带account_cookie的初始化持仓
 
         Returns:
             [type] -- [description]
@@ -444,7 +561,7 @@ class QA_Account(QA_Worker):
             return None
 
     @property
-    def poisitions(self):
+    def positions(self):
         raise NotImplementedError
 
     @property
@@ -457,15 +574,17 @@ class QA_Account(QA_Worker):
         Returns:
             [type] -- [description]
         """
-
-        if len(self.time_index) > 0:
-            return str(min(self.time_index))[0:10]
-        else:
-            print(
-                RuntimeWarning(
-                    'QAACCOUNT: THIS ACCOUNT DOESNOT HAVE ANY TRADE'
+        if self.start_ == None:
+            if len(self.time_index_max) > 0:
+                return str(min(self.time_index_max))[0:10]
+            else:
+                print(
+                    RuntimeWarning(
+                        'QAACCOUNT: THIS ACCOUNT DOESNOT HAVE ANY TRADE'
+                    )
                 )
-            )
+        else:
+            return self.start_
 
     @property
     def end_date(self):
@@ -477,15 +596,23 @@ class QA_Account(QA_Worker):
         Returns:
             [type] -- [description]
         """
-
-        if len(self.time_index) > 0:
-            return str(max(self.time_index))[0:10]
-        else:
-            print(
-                RuntimeWarning(
-                    'QAACCOUNT: THIS ACCOUNT DOESNOT HAVE ANY TRADE'
+        if self.end_ == None:
+            if len(self.time_index_max) > 0:
+                return str(max(self.time_index_max))[0:10]
+            else:
+                print(
+                    RuntimeWarning(
+                        'QAACCOUNT: THIS ACCOUNT DOESNOT HAVE ANY TRADE'
+                    )
                 )
-            )
+        else:
+            return self.end_
+
+    def set_end_date(self, date):
+        if QA_util_if_trade(date):
+            self.end_ = date
+        else:
+            print('error {} not a trade date'.format(date))
 
     @property
     def market_data(self):
@@ -493,12 +620,106 @@ class QA_Account(QA_Worker):
 
     @property
     def trade_range(self):
-        return QA_util_get_trade_range(self.start_date, self.end_date)
+        if (self.market_type == MARKET_TYPE.CRYPTOCURRENCY):
+            # 数字币交易不停
+            return pd.date_range(self.start_date, self.end_date, freq='1D')
+        else:
+            return QA_util_get_trade_range(self.start_date, self.end_date)
+
+    @property
+    def trade_range_max(self):
+        if (self.market_type == MARKET_TYPE.CRYPTOCURRENCY):
+            # 数字币交易不停
+            return pd.date_range(self.start_date, self.end_date, freq='1D')
+        elif self.start_date < str(min(self.time_index_max))[0:10]:
+            return QA_util_get_trade_range(self.start_date, self.end_date)
+        else:
+
+            return QA_util_get_trade_range(str(min(self.time_index_max))[0:10], 
+                                           str(max(str(max(self.time_index_max)),self.end_date))[0:10])
+
+    @property
+    def total_commission(self):
+        """
+        总手续费
+        """
+        try:
+            return np.asarray(self.history).T[9].sum()
+        except:
+            return 0
+
+    @property
+    def total_tax(self):
+        """
+        总印花税
+        """
+        try:
+            return np.asarray(self.history).T[10].sum()
+        except:
+            return 0
+
+    @property
+    def time_index(self):
+        if len(self.time_index_max):
+            res_ = pd.DataFrame(self.time_index_max)
+            res_.columns = (['datetime'])
+            res_['date'] = [i[0:10] for i in res_['datetime']]
+            res_ = res_[res_['date'].isin(self.trade_range)]
+            return list(res_['datetime'])
+        else:
+            return self.time_index_max
+#
+#        if self.start_date < str(min(self.time_index))[0:10] :
+#             return QA_util_get_trade_range(self.start_date, self.end_date)
+#        else:
+#            return QA_util_get_trade_range(str(min(self.time_index))[0:10], str(max(self.time_index))[0:10])
+
+    @property
+    def history_min(self):
+        if len(self.history):
+            res_ = self.history_table
+            if self.market_type == MARKET_TYPE.FUTURE_CN:
+                res_  = res_.assign(tradedate = res_.datetime.apply(lambda x: str(QA_util_future_to_tradedatetime(x))[0:10]))
+            else:
+                res_  = res_.assign(tradedate = res_.datetime.apply(lambda x: str(x)[0:10]))
+            res_ = res_[res_['tradedate'].isin(self.trade_range)]
+            return np.array(res_.drop(['tradedate'], axis=1)).tolist()
+        else:
+            return self.history
+
+    @property
+    def history_table_min(self):
+        '区间交易历史的table'
+        if len(self.history_min) > 0:
+            lens = len(self.history_min[0])
+        else:
+            lens = len(self._history_headers)
+
+        return pd.DataFrame(
+            data=self.history_min,
+            columns=self._history_headers[:lens]
+        ).sort_index()
+
+
+#    @property
+#    def history(self):
+#        if len(self.history_max):
+#            res_=pd.DataFrame(self.history_max)
+#            res_['date']=[ i[0:10]  for i in res_[0]]
+#            res_=res_[res_['date'].isin(self.trade_range)]
+#            return np.array(res_.drop(['date'],axis=1)).tolist()
+#        else:
+#            return self.history_max
+#        res_=pd.DataFrame(self.time_index_max)
+#        res_.columns=(['datetime'])
+#        res_['date']=[ i[0:10]  for i in res_['datetime']]
+#        res_=res_[res_['date'].isin(self.trade_range)]
 
     @property
     def trade_day(self):
         return list(
-            pd.Series(self.time_index).apply(lambda x: str(x)[0:10]).unique()
+            pd.Series(self.time_index_max
+                     ).apply(lambda x: str(x)[0:10]).unique()
         )
 
     @property
@@ -526,7 +747,7 @@ class QA_Account(QA_Worker):
         '现金的table'
         _cash = pd.DataFrame(
             data=[self.cash[1::],
-                  self.time_index],
+                  self.time_index_max],
             index=['cash',
                    'datetime']
         ).T
@@ -571,15 +792,6 @@ class QA_Account(QA_Worker):
         ).groupby('code').sum().replace(0,
                                         np.nan).dropna().sort_index()
 
-    # @property
-    # def hold_available_temp(self):
-    #     """可用持仓
-    #     """
-    #     return self._table.groupby('code').amount.sum().replace(
-    #         0,
-    #         np.nan
-    #     ).dropna().sort_index()
-
     @property
     def hold_available(self):
         """可用持仓
@@ -616,9 +828,24 @@ class QA_Account(QA_Worker):
     def daily_cash(self):
         '每日交易结算时的现金表'
         res = self.cash_table.drop_duplicates(subset='date', keep='last')
-
-        return pd.concat([res.set_index('date'), pd.Series(data=None, index=pd.to_datetime(self.trade_range).set_names('date'), name='predrop')], axis=1)\
-            .ffill().drop(['predrop'], axis=1).reset_index().set_index(['date', 'account_cookie'], drop=False).sort_index()
+        le = pd.DataFrame(
+            pd.Series(
+                data=None,
+                index=pd.to_datetime(self.trade_range_max).set_names('date'),
+                name='predrop'
+            )
+        )
+        ri = res.set_index('date')
+        res_ = pd.merge(le, ri, how='left', left_index=True, right_index=True)
+        res_ = res_.ffill().fillna(
+            self.init_cash
+        ).drop(['predrop',
+                'datetime',
+                'account_cookie'],
+               axis=1).reset_index().set_index(['date'],
+                                               drop=False).sort_index()
+        res_ = res_[res_.index.isin(self.trade_range)]
+        return res_
 
     @property
     def daily_hold(self):
@@ -636,11 +863,38 @@ class QA_Account(QA_Worker):
             data = data.set_index(['date', 'account_cookie'])
             res = data[~data.index.duplicated(keep='last')].sort_index()
             # 这里会导致股票停牌时的持仓也被计算 但是计算market_value的时候就没了
-            return pd.concat([res.reset_index().set_index('date'), pd.Series(data=None, index=pd.to_datetime(self.trade_range).set_names('date'), name='predrop')], axis=1)\
-                .ffill().drop(['predrop'], axis=1).reset_index().set_index(['date', 'account_cookie']).sort_index()
+            le = pd.DataFrame(
+                pd.Series(
+                    data=None,
+                    index=pd.to_datetime(self.trade_range_max
+                                        ).set_names('date'),
+                    name='predrop'
+                )
+            )
+            ri = res.reset_index().set_index('date')
+            res_ = pd.merge(
+                le,
+                ri,
+                how='left',
+                left_index=True,
+                right_index=True
+            )
+            res_ = res_.ffill().fillna(0).drop(
+                ['predrop',
+                 'account_cookie'],
+                axis=1
+            ).reset_index().set_index(['date']).sort_index()
+            res_ = res_[res_.index.isin(self.trade_range)]
+            return res_
 
-    # 计算assets的时候 需要一个market_data=QA.QA_fetch_stock_day_adv(list(data.columns),data.index[0],data.index[-1])
-    # (market_data.to_qfq().pivot('close')*data).sum(axis=1)+user_cookie.get_account(a_1).daily_cash.set_index('date').cash
+    @property
+    def daily_frozen(self):
+        '每日交易结算时的持仓表'
+        res_ = self.history_table.assign(
+            date=pd.to_datetime(self.history_table.datetime)
+        ).set_index('date').resample('D').total_frozen.last().fillna(method='pad')
+        res_ = res_[res_.index.isin(self.trade_range)]
+        return res_
 
     @property
     def latest_cash(self):
@@ -666,7 +920,37 @@ class QA_Account(QA_Worker):
 
         return pd.concat([self.init_hold,
                           hold_available]).groupby('code').sum().sort_index(
-                          ).apply(lambda x: x if x > 0 else None).dropna()
+                          )
+
+    def current_hold_price(self):
+        """计算目前持仓的成本  用于模拟盘和实盘查询
+
+        Returns:
+            [type] -- [description]
+        """
+
+        def weights(x):
+            n = len(x)
+            res = 1
+            while res > 0 or res < 0:
+                res = sum(x[:n]['amount'])
+                n = n - 1
+
+            x = x[n + 1:]
+
+            if sum(x['amount']) != 0:
+                return np.average(
+                    x['price'],
+                    weights=x['amount'],
+                    returned=True
+                )
+            else:
+                return np.nan
+
+        return self.history_table.set_index(
+            'datetime',
+            drop=False
+        ).sort_index().groupby('code').apply(weights).dropna()
 
     def hold_price(self, datetime=None):
         """计算持仓成本  如果给的是日期,则返回当日开盘前的持仓
@@ -727,13 +1011,23 @@ class QA_Account(QA_Worker):
             ).sort_index().loc[:datetime].groupby('code').apply(weights
                                                                ).dropna()
 
-    def reset_assets(self, init_cash=None):
-        'reset_history/cash/'
+    def reset_assets(self, init_cash=1000000):
+        """重置账户
+        
+        Keyword Arguments:
+            init_cash {int} -- [description] (default: {1000000})
+        """
         self.sell_available = copy.deepcopy(self.init_hold)
         self.history = []
         self.init_cash = init_cash
         self.cash = [self.init_cash]
         self.cash_available = self.cash[-1] # 在途资金
+
+        self.time_index_max = []
+
+        self.frozen = {} # 冻结资金(保证金)
+        self.finishedOrderid = []
+
 
     def receive_simpledeal(
             self,
@@ -784,6 +1078,10 @@ class QA_Account(QA_Worker):
         """
 
         self.datetime = trade_time
+        if realorder_id in self.finishedOrderid:
+            pass
+        else:
+            self.finishedOrderid.append(realorder_id)
 
         market_towards = 1 if trade_towards > 0 else -1
         # value 合约价值 unit 合约乘数
@@ -821,6 +1119,28 @@ class QA_Account(QA_Worker):
                     abs(value)
 
             tax_fee = 0 # 买入不收印花税
+        elif self.market_type == MARKET_TYPE.CRYPTOCURRENCY:
+            # 数字币不收税
+            # 双边手续费 也没有最小手续费限制
+
+            # 数字币的 CODE 包含{1}.{2}, 1 为交易所，2 为交易对CODE 
+            commission_fee_preset = self.market_preset.get_code(code)
+            if trade_towards in [ORDER_DIRECTION.BUY,
+                                 ORDER_DIRECTION.BUY_OPEN,
+                                 ORDER_DIRECTION.BUY_CLOSE,
+                                 ORDER_DIRECTION.SELL,
+                                 ORDER_DIRECTION.SELL_CLOSE,
+                                 ORDER_DIRECTION.SELL_OPEN]:
+                commission_fee = commission_fee_preset['commission_coeff_pervol'] * trade_amount + \
+                    commission_fee_preset['commission_coeff_peramount'] * \
+                    abs(value)
+            elif trade_towards in [ORDER_DIRECTION.BUY_CLOSETODAY,
+                                   ORDER_DIRECTION.SELL_CLOSETODAY]:
+                commission_fee = commission_fee_preset['commission_coeff_today_pervol'] * trade_amount + \
+                    commission_fee_preset['commission_coeff_today_peramount'] * \
+                    abs(value)
+
+            tax_fee = 0 # 买入不收印花税
         elif self.market_type == MARKET_TYPE.STOCK_CN:
 
             commission_fee = self.commission_coeff * \
@@ -834,7 +1154,7 @@ class QA_Account(QA_Worker):
 
         # 结算交易
         if self.cash[-1] > trade_money + commission_fee + tax_fee:
-            self.time_index.append(trade_time)
+            self.time_index_max.append(trade_time)
             # TODO: 目前还不支持期货的锁仓
             if self.allow_sellopen:
                 if trade_towards in [ORDER_DIRECTION.BUY_OPEN,
@@ -842,22 +1162,22 @@ class QA_Account(QA_Worker):
                     # 开仓单占用现金 计算avg
                     # 初始化
                     if code in self.frozen.keys():
-                        if trade_towards in self.frozen[code].keys():
+                        if str(trade_towards) in self.frozen[code].keys():
                             pass
                         else:
-                            self.frozen[code][trade_towards] = {
+                            self.frozen[code][str(trade_towards)] = {
                                 'money': 0,
                                 'amount': 0,
                                 'avg_price': 0
                             }
                     else:
                         self.frozen[code] = {
-                            ORDER_DIRECTION.BUY_OPEN: {
+                            str(ORDER_DIRECTION.BUY_OPEN): {
                                 'money': 0,
                                 'amount': 0,
                                 'avg_price': 0
                             },
-                            ORDER_DIRECTION.SELL_OPEN: {
+                            str(ORDER_DIRECTION.SELL_OPEN): {
                                 'money': 0,
                                 'amount': 0,
                                 'avg_price': 0
@@ -868,88 +1188,138 @@ class QA_Account(QA_Worker):
                     # money 冻结的资金
                     # amount  冻结的数量
 
-                    2018-12-31                    
+                    2018-12-31
+
+                    多单冻结[money] 成本
+
+                    成交额
+                    raw_trade_money =  trade_price * trade_amount * market_towards
+                    成交金额(基于市值*杠杆系数*冻结系数)
+                    trade_money =  trade_price * trade_amount * market_towards* unit * frozen
+
+                    money = (money*amount + trade_money)/(amount+新的成交量)
+                    avg_price= (avgprice*amount+ raw_trade_money)/(amount+新的成交量)
 
                     """
 
-                    self.frozen[code][trade_towards]['money'] = (
+                    self.frozen[code][str(trade_towards)]['money'] = (
                         (
-                            self.frozen[code][trade_towards]['money'] *
-                            self.frozen[code][trade_towards]['amount']
+                            self.frozen[code][str(trade_towards)]['money'] *
+                            self.frozen[code][str(trade_towards)]['amount']
                         ) + abs(trade_money)
                     ) / (
-                        self.frozen[code][trade_towards]['amount'] +
+                        self.frozen[code][str(trade_towards)]['amount'] +
                         trade_amount
                     )
-                    self.frozen[code][trade_towards]['avg_price'] = (
+                    self.frozen[code][str(trade_towards)]['avg_price'] = (
                         (
-                            self.frozen[code][trade_towards]['avg_price'] *
-                            self.frozen[code][trade_towards]['amount']
-                        ) + abs(raw_trade_money)
+                            self.frozen[code][str(trade_towards)]['avg_price'] *
+                            self.frozen[code][str(trade_towards)]['amount']
+                        ) + abs(trade_money)
                     ) / (
-                        self.frozen[code][trade_towards]['amount'] +
+                        self.frozen[code][str(trade_towards)]['amount'] +
                         trade_amount
                     )
-                    self.frozen[code][trade_towards]['amount'] += trade_amount
+                    self.frozen[code][str(trade_towards)
+                                     ]['amount'] += trade_amount
 
                     self.cash.append(
                         self.cash[-1] - abs(trade_money) - commission_fee -
                         tax_fee
                     )
                 elif trade_towards in [ORDER_DIRECTION.BUY_CLOSE,
-                                       ORDER_DIRECTION.SELL_CLOSE]:
+                                       ORDER_DIRECTION.BUY_CLOSETODAY,
+                                       ORDER_DIRECTION.SELL_CLOSE,
+                                       ORDER_DIRECTION.SELL_CLOSETODAY]:
                     # 平仓单释放现金
                     # if trade_towards == ORDER_DIRECTION.BUY_CLOSE:
                     # 卖空开仓 平仓买入
                     # self.cash
-                    if trade_towards == ORDER_DIRECTION.BUY_CLOSE:  # 买入平仓  之前是空开
-                                                                    # self.frozen[code][ORDER_DIRECTION.SELL_OPEN]['money'] -= trade_money
-                        self.frozen[code][ORDER_DIRECTION.SELL_OPEN
-                                         ]['amount'] -= trade_amount
+                    # 买入平仓  之前是空开
+                    if trade_towards in [ORDER_DIRECTION.BUY_CLOSE,
+                                         ORDER_DIRECTION.BUY_CLOSETODAY]:
+                        # self.frozen[code][ORDER_DIRECTION.SELL_OPEN]['money'] -= trade_money
+                        self.frozen[code][str(ORDER_DIRECTION.SELL_OPEN
+                                             )]['amount'] -= trade_amount
 
-                        frozen_part = self.frozen[code][
-                            ORDER_DIRECTION.SELL_OPEN]['money'] * trade_amount
-                        # 账户的现金+ 冻结的的释放 + 买卖价差* 杠杆
+                        frozen_part = self.frozen[code][str(
+                            ORDER_DIRECTION.SELL_OPEN
+                        )]['money'] * trade_amount
+                        # 账户的现金+ 冻结的的释放 + 买卖价差* 杠杆 - 交易费用
+                        """
+                        + 释放的保证金 frozen_part 平仓手数* 对应的冻结保证金的均价
+                        + 释放的保证金和交易成本的价差对应的真实价值 (frozen_part - trade_money)/frozen
+                        - 手续费
+                        - 税费
+
+                        如:
+
+                        行情 3800
+                        买入冻结  3700
+
+                        平仓时行情: 3838
+
+                        + 释放: 3700
+                        + 价差: (-3700 + 3737)*手数/冻结系数 ==> 真实利润 [注意买卖关系: 买入开仓 -3700 卖出平仓 + 3737]
+                        - 手续费
+
+
+                        行情 3800
+                        卖出开仓 冻结 3700
+                        平仓时行情: 3838
+
+                        + 释放: 3700
+                        + 价差: (-3737 + 3700)*手数/冻结系数 ==> 真实利润 [注意这里的买卖关系: 卖出开仓=> 3700 买入平仓 -3737]
+                        - 手续费
+
+                        """
                         self.cash.append(
                             self.cash[-1] + frozen_part +
                             (frozen_part - trade_money) / frozen -
                             commission_fee - tax_fee
                         )
-                        if self.frozen[code][ORDER_DIRECTION.SELL_OPEN
-                                            ]['amount'] == 0:
-                            self.frozen[code][ORDER_DIRECTION.SELL_OPEN
-                                             ]['money'] = 0
-                            self.frozen[code][ORDER_DIRECTION.SELL_OPEN
-                                             ]['avg_price'] = 0
+                        if self.frozen[code][str(
+                                ORDER_DIRECTION.SELL_OPEN)]['amount'] == 0:
+                            self.frozen[code][str(ORDER_DIRECTION.SELL_OPEN
+                                                 )]['money'] = 0
+                            self.frozen[code][str(ORDER_DIRECTION.SELL_OPEN
+                                                 )]['avg_price'] = 0
 
-                    elif trade_towards == ORDER_DIRECTION.SELL_CLOSE: # 卖出平仓  之前是多开
-                                                                      # self.frozen[code][ORDER_DIRECTION.BUY_OPEN]['money'] -= trade_money
-                        self.frozen[code][ORDER_DIRECTION.BUY_OPEN
-                                         ]['amount'] -= trade_amount
+                    # 卖出平仓  之前是多开
+                    elif trade_towards in [ORDER_DIRECTION.SELL_CLOSE,
+                                           ORDER_DIRECTION.SELL_CLOSETODAY]:
+                        # self.frozen[code][ORDER_DIRECTION.BUY_OPEN]['money'] -= trade_money
+                        self.frozen[code][str(ORDER_DIRECTION.BUY_OPEN
+                                             )]['amount'] -= trade_amount
 
-                        frozen_part = self.frozen[code][ORDER_DIRECTION.BUY_OPEN
-                                                       ]['money'] * trade_amount
+                        frozen_part = self.frozen[code][str(
+                            ORDER_DIRECTION.BUY_OPEN
+                        )]['money'] * trade_amount
                         self.cash.append(
                             self.cash[-1] + frozen_part +
                             (abs(trade_money) - frozen_part) / frozen -
                             commission_fee - tax_fee
                         )
-                        if self.frozen[code][ORDER_DIRECTION.BUY_OPEN
-                                            ]['amount'] == 0:
-                            self.frozen[code][ORDER_DIRECTION.BUY_OPEN
-                                             ]['money'] = 0
-                            self.frozen[code][ORDER_DIRECTION.BUY_OPEN
-                                             ]['avg_price'] = 0
+                        if self.frozen[code][str(
+                                ORDER_DIRECTION.BUY_OPEN)]['amount'] == 0:
+                            self.frozen[code][str(ORDER_DIRECTION.BUY_OPEN
+                                                 )]['money'] = 0
+                            self.frozen[code][str(ORDER_DIRECTION.BUY_OPEN
+                                                 )]['avg_price'] = 0
             else: # 不允许卖空开仓的==> 股票
 
                 self.cash.append(
                     self.cash[-1] - trade_money - tax_fee - commission_fee
                 )
-            if self.allow_t0 or trade_towards == ORDER_DIRECTION.SELL:
+            if trade_towards in [ ORDER_DIRECTION.BUY_OPEN, ORDER_DIRECTION.SELL_OPEN]:
+                """平仓部分的sell_available已经被提前扣减了 在sendorder中
+                """
+
                 self.sell_available[code] = self.sell_available.get(
                     code,
                     0
                 ) + trade_amount * market_towards
+            if self.allow_t0:
                 self.buy_available = self.sell_available
 
             self.cash_available = self.cash[-1]
@@ -957,12 +1327,18 @@ class QA_Account(QA_Worker):
                 ORDER_DIRECTION.BUY_OPEN,
                 ORDER_DIRECTION.SELL_OPEN
             ] else 0
+
+            try:
+                total_frozen = sum([itex.get('avg_price',0)* itex.get('amount',0) for item in self.frozen.values() for itex in item.values()])
+            except Exception as e:
+                print(e)
+                total_frozen = 0
             self.history.append(
                 [
-                    trade_time,
+                    str(trade_time),
                     code,
                     trade_price,
-                    market_towards * trade_amount,
+                    float(market_towards * trade_amount),
                     self.cash[-1],
                     order_id,
                     realorder_id,
@@ -971,14 +1347,28 @@ class QA_Account(QA_Worker):
                     commission_fee,
                     tax_fee,
                     message,
-                    frozen_money
+                    frozen_money,
+                    trade_towards,
+                    total_frozen
                 ]
             )
+            return 0
 
         else:
-            # print(self.cash[-1])
+            print('ALERT MONEY NOT ENOUGH!!!')
+            print(self.cash[-1])
             self.cash_available = self.cash[-1]
+            return -1
             #print('NOT ENOUGH MONEY FOR {}'.format(order_id))
+
+    @property
+    def node_view(self):
+        return {
+            'node_name': self.account_cookie,
+            'strategy_name': self.strategy_name,
+            'cash_available': self.cash_available,
+            'history': self.history
+        }
 
     def receive_deal(
             self,
@@ -1008,7 +1398,7 @@ class QA_Account(QA_Worker):
             [type] -- [description]
         """
 
-        # print('receive deal')
+        print('QAACCOUNT ==> receive deal  Time {}/ Code:{}/ Price:{}/ TOWARDS:{}/ Amounts:{}'.format(trade_time, code, trade_price, trade_towards, trade_amount))
 
         trade_time = str(trade_time)
         code = str(code)
@@ -1021,21 +1411,38 @@ class QA_Account(QA_Worker):
 
         market_towards = 1 if trade_towards > 0 else -1
         """2019/01/03 直接使用快速撮合接口了
-        2333 这两个接口现在也没啥区别了....
-        太绝望了
-        """
+        
 
-        self.receive_simpledeal(
-            code,
-            trade_price,
-            trade_amount,
-            trade_towards,
-            trade_time,
-            message=message,
-            order_id=order_id,
-            trade_id=trade_id,
-            realorder_id=realorder_id
-        )
+        2019/07/25 在此函数中增加账户的可买可卖可平逻辑
+        flag 是用于控制可平的
+
+        res是用于接收从receive_simpledeal的返回值
+        如果返回值是0  则表明交易撮合成功
+        如果是是-1 则表明未进行撮合
+
+        """
+        flag = True
+        res = -1
+        if trade_towards in [ORDER_DIRECTION.BUY_CLOSE, ORDER_DIRECTION.BUY_CLOSETODAY]:
+            if self.frozen[code][str(ORDER_DIRECTION.SELL_OPEN)]['amount'] < trade_amount:
+                flag = False
+        elif trade_towards in [ORDER_DIRECTION.SELL_CLOSE, ORDER_DIRECTION.SELL_CLOSETODAY]:
+            if self.frozen[code][str(ORDER_DIRECTION.BUY_OPEN)]['amount'] < trade_amount:
+                flag = False
+        
+        if flag:
+            res = self.receive_simpledeal(
+                code,
+                trade_price,
+                trade_amount,
+                trade_towards,
+                trade_time,
+                message=message,
+                order_id=order_id,
+                trade_id=trade_id,
+                realorder_id=realorder_id
+            )
+        return res
 
     def send_order(
             self,
@@ -1047,6 +1454,8 @@ class QA_Account(QA_Worker):
             money=None,
             order_model=None,
             amount_model=None,
+            order_id=None,
+            position_id=None,
             *args,
             **kwargs
     ):
@@ -1147,15 +1556,16 @@ class QA_Account(QA_Worker):
         assert (int(towards) != 0)
         if int(towards) in [1, 2, 3]:
             # 是买入的情况(包括买入.买开.买平)
+
             if self.cash_available >= money:
-                if self.market_type is MARKET_TYPE.STOCK_CN: # 如果是股票 买入的时候有100股的最小限制
+                if self.market_type == MARKET_TYPE.STOCK_CN: # 如果是股票 买入的时候有100股的最小限制
                     amount = int(amount / 100) * 100
                     self.cash_available -= money
                     flag = True
 
                 if self.running_environment == RUNNING_ENVIRONMENT.TZERO:
 
-                    if self.buy_available.get(code, 0) >= amount:
+                    if abs(self.buy_available.get(code, 0)) >= amount:
                         flag = True
                         self.cash_available -= money
                         self.buy_available[code] -= amount
@@ -1175,10 +1585,11 @@ class QA_Account(QA_Worker):
                             float(amount * price * (1 + self.commission_coeff))
                         )
 
-                        print(_hold)
+                        #print(_hold)
                         if self.cash_available >= _money:
-                            if _hold < 0:
+                            if _hold < 0 and abs(_hold) >= amount:
                                 self.cash_available -= _money
+                                self.sell_available[code] += amount
 
                                 flag = True
                             else:
@@ -1203,10 +1614,11 @@ class QA_Account(QA_Worker):
 
             # 如果你的hold> amount>0
             # 持仓数量>卖出数量
-            if _hold >= amount:
-                self.sell_available[code] -= amount
-                # towards = ORDER_DIRECTION.SELL
-                flag = True
+            if int(towards) in [-1, -3]:
+                if _hold >= amount:
+                    self.sell_available[code] -= amount
+                    # towards = ORDER_DIRECTION.SELL
+                    flag = True
             # 如果持仓数量<卖出数量
             else:
 
@@ -1242,9 +1654,12 @@ class QA_Account(QA_Worker):
                 order_model=order_model,
                 towards=towards,
                 money=money,
+                broker=self.broker,
                 amount_model=amount_model,
                 commission_coeff=self.commission_coeff,
                 tax_coeff=self.tax_coeff,
+                position_id=position_id,
+                order_id=order_id,
                 *args,
                 **kwargs
             )                                                           # init
@@ -1277,7 +1692,6 @@ class QA_Account(QA_Worker):
                                ORDER_DIRECTION.SELL_OPEN]:
             self.sell_available[order.code] += order.amount
 
-        # self.sell_available[]
     @property
     def close_positions_order(self):
         """平仓单
@@ -1301,9 +1715,9 @@ class QA_Account(QA_Worker):
                         price=0,
                         amount=abs(amount),
                         time=time,
-                        towards=ORDER_DIRECTION.BUY_CLOSE,
+                        towards=ORDER_DIRECTION.BUY,
                         order_model=ORDER_MODEL.CLOSE,
-                        amount_model=AMOUNT_MODEL.BY_AMOUNT
+                        amount_model=AMOUNT_MODEL.BY_AMOUNT,
                     )
                 elif amount > 0:
                     # 先买入的单子, 卖平
@@ -1312,7 +1726,7 @@ class QA_Account(QA_Worker):
                         price=0,
                         amount=abs(amount),
                         time=time,
-                        towards=ORDER_DIRECTION.SELL_CLOSE,
+                        towards=ORDER_DIRECTION.SELL,
                         order_model=ORDER_MODEL.CLOSE,
                         amount_model=AMOUNT_MODEL.BY_AMOUNT
                     )
@@ -1326,7 +1740,7 @@ class QA_Account(QA_Worker):
                 )
             )
 
-    def settle(self):
+    def settle(self, settle_data=None):
         """
         股票/期货的日结算
 
@@ -1335,8 +1749,16 @@ class QA_Account(QA_Worker):
 
         期货的结算: 结转静态资金
 
-        """
 
+        @2019-02-25 yutiansut
+        hold 在下面要进行大变化:
+
+        从 只计算数量 ==> 数量+成本+买入价 (携带更多信息)
+
+        基于history去计算hold ==> last_settle+ today_pos_change
+
+        """
+        #print('FROM QUANTAXIS QA_ACCOUNT: account settle')
         if self.running_environment == RUNNING_ENVIRONMENT.TZERO and self.hold_available.sum(
         ) != 0:
             raise RuntimeError(
@@ -1345,6 +1767,7 @@ class QA_Account(QA_Worker):
                 )
             )
         if self.market_type == MARKET_TYPE.FUTURE_CN:
+            # 增加逐日盯市制度
 
             self.static_balance['frozen'].append(
                 sum(
@@ -1374,6 +1797,7 @@ class QA_Account(QA_Worker):
 
         self.sell_available = self.hold
         self.buy_available = self.hold
+        self.cash_available = self.cash[-1]
         self.datetime = '{} 09:30:00'.format(
             QA_util_get_next_day(self.date)
         ) if self.date is not None else None
@@ -1388,8 +1812,44 @@ class QA_Account(QA_Worker):
 
         print(
             "on_bar account {} ".format(self.account_cookie),
-            event.market_data
+            event.market_data.data
         )
+        print(event.send_order)
+        try:
+            for code in event.market_data.code:
+
+                if self.sell_available.get(code, 0) > 0:
+                    print('可以卖出 {}'.format(self._currenttime))
+                    event.send_order(
+                        account_cookie=self.account_cookie,
+                        amount=self.sell_available[code],
+                        amount_model=AMOUNT_MODEL.BY_AMOUNT,
+                        time=self.current_time,
+                        code=code,
+                        price=0,
+                        order_model=ORDER_MODEL.MARKET,
+                        towards=ORDER_DIRECTION.SELL,
+                        market_type=self.market_type,
+                        frequence=self.frequence,
+                        broker_name=self.broker
+                    )
+                else:
+                    print('{} 无仓位, 买入{}'.format(self._currenttime, code))
+                    event.send_order(
+                        account_cookie=self.account_cookie,
+                        amount=100,
+                        amount_model=AMOUNT_MODEL.BY_AMOUNT,
+                        time=self.current_time,
+                        code=code,
+                        price=0,
+                        order_model=ORDER_MODEL.MARKET,
+                        towards=ORDER_DIRECTION.BUY,
+                        market_type=self.market_type,
+                        frequence=self.frequence,
+                        broker_name=self.broker
+                    )
+        except Exception as e:
+            print(e)
 
     def on_tick(self, event):
         '''
@@ -1412,8 +1872,13 @@ class QA_Account(QA_Worker):
         self.strategy_name = message.get('strategy_name', None)
         self._currenttime = message.get('current_time', None)
         self.allow_sellopen = message.get('allow_sellopen', False)
+        self.allow_margin = message.get('allow_margin', False)
         self.allow_t0 = message.get('allow_t0', False)
         self.margin_level = message.get('margin_level', False)
+        self.frequence = message.get(
+            'frequence',
+            FREQUENCE.FIFTEEN_MIN
+        )                                       # 默认15min
         self.init_cash = message.get(
             'init_cash',
             message.get('init_assets',
@@ -1425,17 +1890,19 @@ class QA_Account(QA_Worker):
         self.tax_coeff = message.get('tax_coeff', 0.0015)
         self.history = message['history']
         self.cash = message['cash']
-        self.time_index = message['trade_index']
+        self.time_index_max = message['trade_index']
         self.running_time = message.get('running_time', None)
         self.quantaxis_version = message.get('quantaxis_version', None)
         self.running_environment = message.get(
             'running_environment',
             RUNNING_ENVIRONMENT.BACKETEST
         )
+        self.frozen = message.get('frozen', {})
+        self.finishedOrderid = message.get('finished_id', [])
         self.settle()
         return self
 
-    def from_otgdict(self,message):
+    def from_otgdict(self, message):
         """[summary]
         balance = static_balance + float_profit
 
@@ -1463,8 +1930,6 @@ class QA_Account(QA_Worker):
         self.allow_sellopen = True
         self.allow_t0 = True
 
-
-
         self.account_cookie = message['accounts']['user_id']
         # 可用资金
         self.cash_available = message['accounts']['available']
@@ -1479,21 +1944,14 @@ class QA_Account(QA_Worker):
         self.close_profit = message['accounts']['close_profit']
         # 持仓盈亏
         self.position_profit = message['accounts']['position_profit']
-        
+
         # 动态权益
         self.float_profit = message['accounts']['float_profit']
 
         # 占用保证金
-        self.margin = message['accounts']['marigin']
+        self.margin = message['accounts']['margin']
 
         self.commission = message['accounts']['commission']
-
-
-
-
-
-
-
 
     @property
     def table(self):
@@ -1516,6 +1974,7 @@ class QA_Account(QA_Worker):
         '''
         'QA_WORKER method'
         if event.event_type is ACCOUNT_EVENT.SETTLE:
+            print('account_settle')
             self.settle()
 
         # elif event.event_type is ACCOUNT_EVENT.UPDATE:
@@ -1542,10 +2001,7 @@ class QA_Account(QA_Worker):
             """update the market_data
             1. update the inside market_data struct
             2. tell the on_bar methods
-
             # 这样有点慢
-
-
             """
 
             self._currenttime = event.market_data.datetime[0]
@@ -1563,6 +2019,21 @@ class QA_Account(QA_Worker):
         存储账户信息
         """
         save_account(self.message)
+
+    def reload(self):
+
+        message = self.client.find_one(
+            {
+                'account_cookie': self.account_cookie,
+                'portfolio_cookie': self.portfolio_cookie,
+                'user_cookie': self.user_cookie
+            }
+        )
+
+        if message is None:
+            self.client.insert(self.message)
+        else:
+            self.from_message(message)
 
     def sync_account(self, sync_message):
         """同步账户
@@ -1609,6 +2080,227 @@ class QA_Account(QA_Worker):
             drop=False
         ).loc[slice(pd.Timestamp(start),
                     pd.Timestamp(end))]
+
+
+
+    def generate_randomtrade(self, code, start, end, frequence):
+        """快速生成一坨交易
+        
+        Arguments:
+            code {[type]} -- [description]
+            frequence {[type]} -- [description]
+            start {[type]} -- [description]
+            end {[type]} -- [description]
+        
+        Keyword Arguments:
+            num {int} -- [description] (default: {100})
+        """
+
+        # 先生成交易日
+        day =  start[0:9]
+
+        for idx, item in QA_quotation(code, start, end, frequence, self.market_type, 'mongo').iterrows():
+            
+            code = idx[1]
+            time = idx[0]
+
+            if self.market_type == MARKET_TYPE.STOCK_CN:
+                if time != day:
+                    self.settle()
+                    day = time
+            if self.market_type == MARKET_TYPE:
+                self.settle()
+                day =  time
+
+            
+            price = item['close']
+            mp = price* self.market_preset.get_frozen(code)* self.market_preset.get_unit(code)
+
+            amounts =  int(self.cash_available/(3*mp)) -1
+            holdamount =  self.sell_available.get(code, 0)
+
+            if random.random() < 0.5:
+                # open
+                
+                if holdamount == 0:
+                    if random.random() < 0.5:
+                        self.buy(code,price, amount=amounts, time = time, if_selfdeal=True)
+                    else:
+                        self.sell(code,price, amount=amounts, time = time,if_selfdeal=True)
+                else:
+                    pass
+            else:
+                
+                if holdamount>0:
+                    self.sell_close(code, price, amount=holdamount, time = time, if_selfdeal=True)
+                elif holdamount<0:
+                    holdamount =  abs(holdamount)
+                    self.buy_close(code, price, amount=holdamount, time = time, if_selfdeal=True)
+            
+    def buy(self, code:str, price:float, amount:int, time:str, order_model:str = ORDER_MODEL.LIMIT, amount_model:str = AMOUNT_MODEL.BY_AMOUNT, if_selfdeal:bool =False):
+        """self.buy == self.buy_open 自动识别股票/期货
+
+        一个方便使用的sendorder的二次封装 方便直接调用
+        
+        Arguments:
+            code {str} -- [description]
+            price {float} -- [description]
+            amount {int} -- [description]
+            time {str} -- [description]
+        
+        Keyword Arguments:
+            order_model {str} -- [description] (default: {ORDER_MODEL.LIMIT})
+            amount_model {str} -- [description] (default: {AMOUNT_MODEL.BY_AMOUNT})
+            if_selfdeal {bool} -- [description] (default: {False})
+        """
+
+        if self.market_type== MARKET_TYPE.FUTURE_CN:
+            towards=ORDER_DIRECTION.BUY_OPEN
+        else:
+            towards=ORDER_DIRECTION.BUY
+
+
+
+        order = self.send_order(
+                    code=code, time=time, amount=amount, 
+                    towards=towards, price=price, 
+                    order_model=order_model, 
+                    amount_model=amount_model
+                )
+
+        if if_selfdeal:
+            if order:
+                
+                order.trade('buy', order.price,
+                                order.amount, order.datetime)
+                self.orders.set_status(order.order_id, ORDER_STATUS.SUCCESS_ALL)
+
+        else:
+            return order
+
+    def sell(self, code:str, price:float, amount:int, time:str, order_model:str = ORDER_MODEL.LIMIT, amount_model:str = AMOUNT_MODEL.BY_AMOUNT, if_selfdeal:bool =False):
+        """self.sell == self.sell_open 自动识别股票/期货
+
+        一个方便使用的sendorder的二次封装 方便直接调用
+        
+        Arguments:
+            code {str} -- [description]
+            price {float} -- [description]
+            amount {int} -- [description]
+            time {str} -- [description]
+        
+        Keyword Arguments:
+            order_model {str} -- [description] (default: {ORDER_MODEL.LIMIT})
+            amount_model {str} -- [description] (default: {AMOUNT_MODEL.BY_AMOUNT})
+            if_selfdeal {bool} -- [description] (default: {False})
+        """
+
+        if self.market_type== MARKET_TYPE.FUTURE_CN:
+            towards=ORDER_DIRECTION.SELL_OPEN
+        else:
+            towards=ORDER_DIRECTION.SELL
+
+
+
+        order = self.send_order(
+                    code=code, time=time, amount=amount, 
+                    towards=towards, price=price, 
+                    order_model=order_model, 
+                    amount_model=amount_model
+                )
+
+        if if_selfdeal:
+            if order:
+                order.trade('sell', order.price,
+                                order.amount, order.datetime)
+                self.orders.set_status(order.order_id, ORDER_STATUS.SUCCESS_ALL)    
+        else:
+            return order
+
+
+    def buy_close(self, code:str, price:float, amount:int, time:str, order_model:str = ORDER_MODEL.LIMIT, amount_model:str = AMOUNT_MODEL.BY_AMOUNT, if_selfdeal:bool =False):
+        """自动识别股票/期货
+
+        一个方便使用的sendorder的二次封装 方便直接调用
+        
+        Arguments:
+            code {str} -- [description]
+            price {float} -- [description]
+            amount {int} -- [description]
+            time {str} -- [description]
+        
+        Keyword Arguments:
+            order_model {str} -- [description] (default: {ORDER_MODEL.LIMIT})
+            amount_model {str} -- [description] (default: {AMOUNT_MODEL.BY_AMOUNT})
+            if_selfdeal {bool} -- [description] (default: {False})
+        """
+
+        if self.market_type== MARKET_TYPE.FUTURE_CN:
+            towards=ORDER_DIRECTION.BUY_CLOSE
+        else:
+            print("WARING: 当前账户是股票账户, 不应该使用此接口")
+            towards = ORDER_DIRECTION.BUY
+
+
+
+        order = self.send_order(
+                    code=code, time=time, amount=amount, 
+                    towards=towards, price=price, 
+                    order_model=order_model, 
+                    amount_model=amount_model
+                )
+
+        if if_selfdeal:
+            if order:
+                order.trade('buyclose', order.price,
+                                order.amount, order.datetime)
+                self.orders.set_status(order.order_id, ORDER_STATUS.SUCCESS_ALL)
+        else:
+            return order
+
+    def sell_close(self, code:str, price:float, amount:int, time:str, order_model:str = ORDER_MODEL.LIMIT, amount_model:str = AMOUNT_MODEL.BY_AMOUNT, if_selfdeal:bool =False):
+        """self.buy == self.buy_open 自动识别股票/期货
+
+        一个方便使用的sendorder的二次封装 方便直接调用
+        
+        Arguments:
+            code {str} -- [description]
+            price {float} -- [description]
+            amount {int} -- [description]
+            time {str} -- [description]
+        
+        Keyword Arguments:
+            order_model {str} -- [description] (default: {ORDER_MODEL.LIMIT})
+            amount_model {str} -- [description] (default: {AMOUNT_MODEL.BY_AMOUNT})
+            if_selfdeal {bool} -- [description] (default: {False})
+        """
+
+        if self.market_type== MARKET_TYPE.FUTURE_CN:
+            towards=ORDER_DIRECTION.SELL_CLOSE
+        else:
+            print("WARING: 当前账户是股票账户, 不应该使用此接口")
+            towards=ORDER_DIRECTION.SELL
+
+
+
+        order = self.send_order(
+                    code=code, time=time, amount=amount, 
+                    towards=towards, price=price, 
+                    order_model=order_model, 
+                    amount_model=amount_model
+                )
+
+        if if_selfdeal:
+            if order:
+                order.trade('sellclose', order.price,
+                                order.amount, order.datetime)
+                self.orders.set_status(order.order_id, ORDER_STATUS.SUCCESS_ALL)
+        else:
+            return order
+
+
+    buy_open =  buy
+    sell_open = sell
 
 
 class Account_handler():

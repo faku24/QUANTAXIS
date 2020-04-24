@@ -2,7 +2,7 @@
 #
 # The MIT License (MIT)
 #
-# Copyright (c) 2016-2018 yutiansut/QUANTAXIS
+# Copyright (c) 2016-2019 yutiansut/QUANTAXIS
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -109,14 +109,11 @@ class QA_Dealer():
         self.deal_price = 0
         self.deal_amount = 0
         self.order.tax_coeff = order.tax_coeff
-        # if order.market_type == MARKET_TYPE.STOCK_CN:
+        self.order.realorder_id = self.order.order_id
 
         res = self.backtest_dealer()
-        # print(res)
-        self.deal_message[self.order.order_id] = res
+        self.deal_message[self.order.realorder_id] = res
 
-        # elif order.market_type == MARKET_TYPE.FUTURE_CN:
-        #     return self.backtest_future_dealer()
 
     @property
     def deal_df(self):
@@ -152,7 +149,6 @@ class QA_Dealer():
             self.order.order_id,
             QA_util_random_with_topic('Trade')
         ]
-        # self.order.
 
     def cal_fee(self):
         if self.order.market_type == MARKET_TYPE.STOCK_CN:
@@ -203,13 +199,8 @@ class QA_Dealer():
                 self.deal_price = 0
                 self.deal_amount = 0
 
-            elif ((float(self.order.price) < float(self.market_data.get('high'))
-                   and
-                   float(self.order.price) > float(self.market_data.get('low')))
-                  or float(self.order.price) == float(
-                      self.market_data.get('low'))
-                  or float(self.order.price) == float(
-                      self.market_data.get('high'))):
+            elif float(self.order.price) <= float(self.market_data.get('high')) and \
+                   float(self.order.price) >= float(self.market_data.get('low')):
                 '能成功交易的情况 有滑点调整'
                 if float(self.order.amount) < float(self.market_data.get(
                         'volume',
@@ -257,8 +248,22 @@ class QA_Dealer():
                     self.market_data.get('date',
                                          None)
                 )
+            elif float(self.order.price) > float(self.market_data.get('high')) and int(self.order.towards) > 0:
+                # 买入价格> 最高价
+                #==> 按最高价成交
+                self.order.price = self.market_data.get('high')
+                self.backtest_dealer()
+            
+            elif float(self.order.price) < float(self.market_data.get('low')) and int(self.order.towards) < 0:
+                # 卖出价格< 最低价 
+
+                #==> 按最低价成交
+                self.order.price = self.market_data.get('low')
+                self.backtest_dealer()
+            
             else:
                 print('failed to deal this order')
+                print(self.order.to_dict())
                 print(self.order.price)
                 print(self.market_data)
                 self.status = TRADE_STATUS.FAILED
@@ -266,7 +271,6 @@ class QA_Dealer():
                 self.deal_amount = 0
 
             self.cal_fee()
-            # print(self.callback_message)
             return self.callback_message
 
         except Exception as e:

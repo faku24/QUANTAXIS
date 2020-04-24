@@ -2,7 +2,7 @@
 #
 # The MIT License (MIT)
 #
-# Copyright (c) 2016-2018 yutiansut/QUANTAXIS
+# Copyright (c) 2016-2019 yutiansut/QUANTAXIS
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -28,7 +28,8 @@ from QUANTAXIS.QAUtil.QAParameter import (
     FREQUENCE,
     MARKET_TYPE,
     ORDER_DIRECTION,
-    ORDER_MODEL
+    ORDER_MODEL,
+    AMOUNT_MODEL
 )
 
 
@@ -42,6 +43,8 @@ class QA_Strategy(QA_Account):
         super().__init__(*args, **kwargs)
         self.frequence = FREQUENCE.FIFTEEN_MIN
         self.market_type = MARKET_TYPE.STOCK_CN
+        self._market_data = []
+        self._subscribe_list = []
 
     def on_bar(self, event):
         try:
@@ -49,7 +52,7 @@ class QA_Strategy(QA_Account):
 
                 if self.sell_available.get(item, 0) > 0:
                     event.send_order(
-                        account_id=self.account_cookie,
+                        account_cookie=self.account_cookie,
                         amount=self.sell_available[item],
                         amount_model=AMOUNT_MODEL.BY_AMOUNT,
                         time=self.current_time,
@@ -63,7 +66,7 @@ class QA_Strategy(QA_Account):
                     )
                 else:
                     event.send_order(
-                        account_id=self.account_cookie,
+                        account_cookie=self.account_cookie,
                         amount=100,
                         amount_model=AMOUNT_MODEL.BY_AMOUNT,
                         time=self.current_time,
@@ -77,3 +80,30 @@ class QA_Strategy(QA_Account):
                     )
         except:
             pass
+
+    def subscribe(self, code):
+        pass
+
+    def unsubscribe(self, code):
+        pass
+
+    def buy(self, code, price, order):
+        pass
+
+    def sell(self):
+        pass
+
+    def buy_open(self):
+        pass
+
+    def sell_close(self):
+        pass
+
+    def sell_open(self):
+        pass
+
+    def buy_close(self):
+        pass
+
+    def settle(self):
+        pass
