@@ -2,7 +2,7 @@
 #
 # The MIT License (MIT)
 #
-# Copyright (c) 2016-2020 yutiansut/QUANTAXIS
+# Copyright (c) 2016-2021 yutiansut/QUANTAXIS
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,15 +23,32 @@
 # SOFTWARE.
 
 """
-QA fetch module
+QAFetch - QUANTAXIS 数据获取模块
 
-@yutiansut
+该模块提供统一的金融数据获取接口，支持多种数据源：
+- 股票市场：TDX、Tushare、同花顺等
+- 期货市场：通达信期货、CTP等
+- 数字货币：Binance、Huobi、OKEx等
+- 港股美股：通达信、Tushare等
 
-QAFetch is Under [QAStandard#0.0.2@10x] Protocol
+主要功能：
+1. 多数据源适配和统一接口
+2. 实时行情和历史数据获取
+3. 多种数据格式支持(pandas, json, numpy)
+4. 数据源切换和容错处理
 
+使用示例：
+    # 获取股票日线数据
+    data = QA_fetch_get_stock_day('tdx', '000001', '2020-01-01', '2020-12-31')
 
+    # 获取实时行情
+    realtime = QA_fetch_get_stock_realtime('tdx', '000001')
+
+@author: yutiansut
+@version: 2.0.0
+@license: MIT
 """
-from QUANTAXIS.QAFetch import QAWind as QAWind
+
 from QUANTAXIS.QAFetch import QATushare as QATushare
 from QUANTAXIS.QAFetch import QATdx as QATdx
 from QUANTAXIS.QAFetch import QAThs as QAThs
@@ -43,15 +60,10 @@ from QUANTAXIS.QAFetch.base import get_stock_market
 from QUANTAXIS.QAFetch import QAQAWEB as QAWEB
 from QUANTAXIS.QAFetch import QAKQ as QAKQ
 
+
 def use(package):
-    if package in ['wind']:
-        try:
-            from WindPy import w
-            # w.start()
-            return QAWind
-        except ModuleNotFoundError:
-            print('NO WIND CLIENT FOUND')
-    elif package in ['tushare', 'ts']:
+
+    if package in ['tushare', 'ts']:
         return QATushare
     elif package in ['tdx', 'pytdx']:
         return QATdx
@@ -78,11 +90,6 @@ def QA_fetch_get_stock_day(package, code, start, end, if_fq='00', level='day', t
 def QA_fetch_get_stock_realtime(package, code):
     Engine = use(package)
     return Engine.QA_fetch_get_stock_realtime(code)
-
-
-def QA_fetch_get_stock_indicator(package, code, start, end):
-    Engine = use(package)
-    return Engine.QA_fetch_get_stock_indicator(code, start, end)
 
 
 def QA_fetch_get_trade_date(package, end, exchange):
@@ -166,9 +173,11 @@ def QA_fetch_get_bond_min(package, code, start, end, level='1min'):
     else:
         return 'Unsupport packages'
 
+
 def QA_fetch_get_bond_realtime(package, code):
     Engine = use(package)
     return Engine.QA_fetch_get_bond_realtime(code)
+
 
 def QA_fetch_get_stock_block(package):
     Engine = use(package)
@@ -320,6 +329,7 @@ def QA_fetch_get_future_transaction_realtime(package, code):
 
 def QA_fetch_get_future_domain():
     return QAKQ.QA_fetch_get_future_domain()
+
 
 def QA_fetch_get_future_realtime(package, code):
     Engine = use(package)

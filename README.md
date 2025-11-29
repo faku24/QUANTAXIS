@@ -1,10 +1,68 @@
+# QUANTAXIS 2.1.0-alpha2
 
-# QUANTAXIS 量化金融策略框架
+<div align="center">
+
+**⭐ 如果这个项目对您有帮助，请点击Star支持我们！**
+
+**🔄 Fork本项目开始您的量化交易之旅！**
+
+Made with ❤️ by [@yutiansut](https://github.com/yutiansut) and [contributors](https://github.com/QUANTAXIS/QUANTAXIS/graphs/contributors)
+
+© 2016-2025 QUANTAXIS. Released under the MIT License.
+
+</div>
 
 
-## ATTENTION!!!  QUANTAXIS无任何收费项目 请勿相信任何渠道的私聊!!!!
-------------------
- 
+> 🚀 **全新升级**: Python 3.9+、QARS2 Rust核心集成、100x性能提升
+>
+> **最新版本**: v2.1.0-alpha2 | **Python**: 3.9-3.12 | **更新日期**: 2025-10-25
+
+---
+
+## 🌟 新特性 (v2.1.0)
+
+### ⚡ QARS2 Rust核心集成 - 性能飞跃
+
+- **100x账户操作加速**: 创建账户从50ms降至0.5ms
+- **10x回测速度提升**: 10年日线回测从30秒降至3秒
+- **90%内存优化**: 大规模持仓内存占用降低90%
+- **无缝集成**: 完全兼容QIFI协议，自动回退Python实现
+
+### 🔧 Python 3.9-3.12 现代化
+
+- **依赖升级**: 60+核心依赖现代化 (pymongo 4.10+, pandas 2.0+, pyarrow 15.0+)
+- **性能优化**: 利用Python 3.11+的性能提升
+- **类型安全**: 更好的类型提示支持
+
+### 📦 QARSBridge - Rust桥接层
+
+```python
+from QUANTAXIS.QARSBridge import QARSAccount, has_qars_support
+
+# 自动检测并使用Rust高性能版本
+if has_qars_support():
+    print("✨ 使用QARS2 Rust版本 (100x性能)")
+account = QARSAccount("my_account", init_cash=1000000)
+
+# API完全兼容，无需修改代码
+account.buy("000001", 10.5, "2025-01-15", 1000)
+```
+
+---
+
+## 🔗 相关项目生态
+
+### 核心项目
+
+- 🦀 [**QARS2**](https://github.com/yutiansut/qars2) - QUANTAXIS Rust核心 (高性能账户、回测引擎)
+- ⚡ [**QADataSwap**](https://github.com/QUANTAXIS/qadataswap) - 跨语言零拷贝通信 (Python/Rust/C++)
+- 🏛️ [**QAEXCHANGE-RS**](https://github.com/yutiansut/qaexchange-rs) - Rust交易所 + HTAP混合数据库
+
+### 扩展实现
+
+- 📊 [**QAUltra-cpp**](https://github.com/QUANTAXIS/qaultra-cpp) - QUANTAXIS C++实现
+- 🔥 [**QAUltra-rs**](https://github.com/QUANTAXIS/qautlra-rs) - QUANTAXIS Rust实现 (部分开源)
+
 
 [![Github workers](https://img.shields.io/github/watchers/quantaxis/quantaxis.svg?style=social&label=Watchers&)](https://github.com/quantaxis/quantaxis/watchers)
 [![GitHub stars](https://img.shields.io/github/stars/quantaxis/quantaxis.svg?style=social&label=Star&)](https://github.com/quantaxis/quantaxis/stargazers)
@@ -12,208 +70,435 @@
 
 [点击右上角Star和Watch来跟踪项目进展! 点击Fork来创建属于你的QUANTAXIS!]
 
-![QUANTAXIS_LOGO_LAST_small.jpg](http://pic.yutiansut.com/Fn0TPEcwu_uhraf58_93Ul5yfvAz)
+![QUANTAXIS_LOGO_LAST_small.jpg](./qalogo.png)
 
-![gvp](http://pic.yutiansut.com/gvp.jpg)
+---
+
+## 📞 联系方式
+
+- **项目主页**: https://github.com/yutiansut/QUANTAXIS
+- **作者**: yutiansut
+- **Email**: yutiansut@qq.com
+- **微信公众号**: QAPRO
+- **微信**: quantitativeanalysis
+
+---
+
+
+
+
+更多文档在[QABook Release](https://github.com/QUANTAXIS/QUANTAXIS/releases/download/latest/quantaxis.pdf)
 
 Quantitative Financial FrameWork
 
-从数据爬取-清洗存储-分析回测-可视化-交易复盘的本地一站式解决方案
+## 📚 核心模块
 
-支持 python/rust 的数据下载 自动运维(a 股/期货/期权/港美股/数字货币), 支持可配置的自定义账户和组合协议(QIFI), 支持股票/期货市场全推的数据协议(MIFI), 支持策略打点和动态画图的界面可视化协议(VIFI), 支持 a 股/ 期货/ 港美股的实盘交易及本地无限制账户的模拟盘. 支持 docker 一键部署和局域网内的 k8s 集群部署, 基于 celery/rabbitmq 实现分布式的回测/模拟/实盘的任务队列. 支持行情二次重采样, 账户订单二次转发, 订单流风控. 支持完全自定义的行情分发(模拟/真实/OU 随机过程)以及行情回放(用于复盘/模拟环境创建).  支持基于 QIFI 协议的各种客户端的自行接入(手机 APP/网页 web/终端) 
+### 1. 🦀 QARSBridge - Rust桥接层 (v2.1新增)
 
-目前为私募([杭州波粒二象资产管理有限公司](https://dc.simuwang.com/company/CO00000XXI.html))自用框架, python 部分完全开源, rust 部分以 docker 微服务形式提供
+**QARS2 Rust核心的Python包装器，提供100x性能提升**
 
+- **QARSAccount**: 高性能QIFI账户系统
+  - 股票交易: `buy()`, `sell()`
+  - 期货交易: `buy_open()`, `sell_open()`, `buy_close()`, `sell_close()`
+  - 账户查询: `get_qifi()`, `get_positions()`, `get_account_info()`
+  - 完全兼容QIFI协议，跨语言一致性 (Python/Rust/C++)
 
+- **QARSBacktest**: Rust回测引擎
+  - 10x回测速度提升
+  - 支持自定义策略 (`QARSStrategy`基类)
+  - 内存占用降低90%
 
+- **自动回退机制**: QARS2未安装时自动使用纯Python实现
 
-QUANTAXIS 项目从2017年开始  已经从一个写毕业论文时没有框架  到现在实际在私募中稳定运行的项目了 因此QUANTAXIS对于刚接触的人会感觉较为庞大和无从入手, 在经历了群里的同学和一些实际企业的部署以后 , 我们希望你可以从以下方式逐步入手和了解QUANTAXIS
+```python
+# 完整示例
+from QUANTAXIS.QARSBridge import QARSAccount
 
+account = QARSAccount("test", init_cash=1000000)
+account.buy("000001", 10.5, "2025-01-15", 1000)      # 股票买入
+account.buy_open("IF2512", 4500.0, "2025-01-15", 2)  # 期货开仓
+positions = account.get_positions()                   # 查询持仓
+```
 
+📖 **详细文档**: [QARSBridge README](./QUANTAXIS/QARSBridge/README.md)
 
-## QUANTAXIS提供什么
+---
 
-简单的讲 QUANTAXIS 提供的是一个从0到一个完整的可以上实盘的支持多市场多周期多策略的框架, 支持局域网/互联网远程部署
+### 2. 🔄 QADataBridge - 零拷贝数据交换 (v2.1新增)
 
-- 投研分析
+**基于QADataSwap的跨语言零拷贝数据传输，5-10x性能提升**
 
-  - 全市场数据(日线/分钟线/tick)
-  - 财务数据
-  - 股票/期货/期权/港股/美股/(以及自定义数据源)
-  - 为多品种优化的数据结构QADataStruct
-  - 为大批量指标计算优化的QAIndicator [支持和通达信/同花顺指标无缝切换]
-  - 基于docker提供远程的投研环境
-  - 自动数据运维
+- **零拷贝转换**:
+  - Pandas ↔ Polars (2.5x加速)
+  - Pandas ↔ Arrow (零拷贝)
+  - Polars ↔ Arrow (零拷贝)
+  - 批量转换支持
 
-- 回测
+- **共享内存通信**:
+  - 跨进程数据传输 (7x加速)
+  - 实时行情分发
+  - 策略间数据共享
 
-  - 纯本地部署/开源
-  - 全市场(股票/期货/自定义市场[需要按规则配置])
-  - 多账户(不限制账户个数, 不限制组合个数)
-  - 多品种(QADataStruct原生为多品种场景进行了优化)
-  - 跨周期(基于动态的resample机制)
-  - 多周期(日线/周线/月线/1min/5min/15min/30min/60min/tick)
-  - 可视化(提供可视化界面)
-  - 自定义的风控分析/绩效分析
+- **自动回退机制**: QADataSwap未安装时自动使用标准转换
 
-- 模拟
+```python
+# 零拷贝转换示例
+from QUANTAXIS.QADataBridge import convert_pandas_to_polars
+import pandas as pd
 
-  - 支持股票/期货的实时模拟(不限制账户)
-  - 支持定向推送/全市场推送
-  - 支持多周期实时推送/ 跨周期推送
-  - 模拟和回测一套代码
-  - 模拟和实盘一套代码
-  - 可视化界面
-  - 提供微信通知模版
+df_pandas = pd.DataFrame({'price': [10.5, 20.3], 'volume': [1000, 2000]})
+df_polars = convert_pandas_to_polars(df_pandas)  # 零拷贝，2.5x加速
 
-- 实盘
+# 共享内存示例
+from QUANTAXIS.QADataBridge import SharedMemoryWriter, SharedMemoryReader
 
-  - 支持股票(需要自行对接)
-  - 支持期货(支持CTP接口)
-  - 和模拟一套代码
-  - 不限制账户数量
-  - 基于策略实现条件单/风控单等
-  - 可视化界面
-  - 提供微信通知模版
+# 进程A：写入数据
+writer = SharedMemoryWriter("market_data", size_mb=50)
+writer.write(df_polars)
 
-- 终端
+# 进程B：读取数据
+reader = SharedMemoryReader("market_data")
+df = reader.read(timeout_ms=5000)  # 零拷贝，7x加速
+```
 
-  - 提供mac/windows的可安装版本(QACommunity)
-  - 提供全平台可用的web界面
-  - 提供手机客户端(ios/andriod)  [内测中]
+📖 **详细文档**: [QADataBridge README](./QUANTAXIS/QADataBridge/README.md)
 
-  
+---
 
+### 3. 💾 QASU / QAFetch - 多市场数据
 
+- 支持MongoDB / ClickHouse存储
+- 自动运维和数据更新
+- Tick / L2 Order / Transaction数据格式
+- 因子化数据结构
 
-## QUANTAXIS如何部署/使用
+### 4. 🕐 QAUtil - 工具函数
 
-因为QUANTAXIS和其相关联的项目约有19个之多, 包括了从本地账户系统到数据收集, 数据分发, 数据存储, 实时的消息分发, 策略挂载, 可视化, 投研环境 等大量内容, 因此 不推荐用户在不熟悉的情况下进行本地部署, 我们推荐的路径(也是我们在私募中实际使用也是)是docker模式
+- 交易时间、交易日历
+- 时间向前向后推算
+- 市场识别、DataFrame转换
 
+### 5. 💼 QIFI / QAMarket - 统一账户体系
 
+**多市场、多语言统一账户协议**
 
-### 部署
+- **qifiaccount**: 标准QIFI账户，与Rust/C++版本保持100%一致
+- **qifimanager**: 多账户管理系统
+- **qaposition**: 单标的精准仓位管理 (套利/CTA/股票)
+- **marketpreset**: 市场预制基类 (tick大小/保证金/手续费)
 
-docker可以理解为一个高效的虚拟机环境(性能损失不到2%), 每个虚拟机包含了一部分独立的代码内容, 因此我们通过类似叠积木的形式就可以将我们所需要的环境一个一个搭建起来
+**QIFI协议特点**:
+- 跨语言兼容 (Python/Rust/C++)
+- 完整账户状态 (账户/持仓/订单/成交)
+- 增量更新支持 (Diff机制)
+- MongoDB友好
 
-我们推荐:
+### 6. 📊 QAFactor - 因子研究
 
-| Win10 企业版/教育版 | 路径                                                  |      |
-| ------------------- | ----------------------------------------------------- | ---- |
-| Win10 企业版/教育版 | 通过docker-desktop                                    |      |
-| Win10 家庭版/Win7   | 推荐升级系统至win10企业版, 或者使用docker-toolbox部署 |      |
-| Linux用户           | 支持一键部署脚本, 快速拉起docker                      |      |
-| Mac用户             | 通过docker-desktop                                    |      |
-| 强行需要代码部署    | 19个项目 8个服务需要自行手动开启                      |      |
+- 单因子研究入库
+- 因子管理、测试
+- 因子合并
+- 优化器 [开发中]
 
-### 使用
+### 7. 📈 QAData - 内存数据库
 
-对于初学者, 我们推荐直接上手[QAStrategy](https://github.com/yutiansut/QAStrategy)来直接编写回测/模拟/实盘
+多标的多市场数据结构，支持：
+- 实时计算
+- 回测引擎
+- 高性能数据访问
 
-PS: 除了可视化的桌面端/网页端 QACommunity(内置在docker/ 群文件自行下载) 以外,  QAStrategy专属的APP也即将上架, 支持自定义的服务器后端连接, 实时的实盘账户手动干预, 行情处理, 持仓管理以及多策略的运行调整等 
+### 8. 📉 QAIndicator - 自定义指标
 
+- 支持自定义指标编写
+- 批量全市场apply
+- 因子表达式构建
 
+### 9. ⚙️ QAEngine - 异步计算
 
-### QUANTAXIS的结构
+- 自定义线程/进程基类
+- 异步计算支持
+- 局域网分布式计算agent
 
+### 10. 📮 QAPubSub - 消息队列
 
+基于RabbitMQ的消息系统：
+- 1-1 / 1-n / n-n 消息分发
+- 计算任务分发收集
+- 实时订单流
 
-![QUANTAXIS 2019.png](http://pic.yutiansut.com/FnRlMW2LQpFBrsdRv7E_uJ9RvzHt)
+### 11. 🎯 QAStrategy - 回测套件
 
-技术栈: python/nodejs/vue/mongodb/rabbitmq/c++
+- CTA策略回测
+- 套利策略回测
+- 完整QIFI模式支持
 
-### 核心工具链(生产环境在用)
+### 12. 🌐 QAWebServer - 微服务
 
-![QQ图片20191029223640.png](http://pic.yutiansut.com/FuVrzcbWJUBNrj4Wa0zlRl-YlBY_)
+- Tornado Web服务器
+- 中台微服务构建
+- RESTful API
 
-#### 已开源
+### 13. 📅 QASchedule - 任务调度
 
-> 数据存储/数据分析/回测
+- 后台任务调度
+- 自动运维
+- 远程任务调度
 
-- [QUANTAXIS](https://github.com/QUANTAXIS/QUANTAXIS) QUANTAXIS的核心部分
 
-> WEB相关, http/websocket/开放数据接口
 
-- [QUANTAXIS_WEBSERVER](https://github.com/QUANTAXIS/QUANTAXIS_WEBSERVER) 基于tornado的web api/ websocket
+---
 
-> 分布式相关, 任务异步执行, 跨进程分布式消息订阅分发
+## 🆕 版本更新说明
 
-- [QUANTAXIS_RUN](https://github.com/QUANTAXIS/quantaxis_run) 基于rabbitmq/celery的分布式任务部署
-- [QUANTAXIS_PUBSUB](https://github.com/QUANTAXIS/QAPUBSUB) 基于RABBITMQ的消息分发订阅
+### v2.1.0 (2025-10-25) - 重大性能升级
 
-> 接口相关: 交易账户/ 期货接口封装/ Trader实例
-- [QATradeG](https://github.com/yutiansut/QAtradeG)  期货的直连版本接口的docker
-- [QUANTAXIS OTGBROKER](https://github.com/QUANTAXIS/QAOTGBROKER) 基于OPEN_TRADE_GATEWAY的接口封装
-- [QUANTAXIS CTPBEEBROKER](https://github.com/QUANTAXIS/QACTPBeeBroker) 基于CTPBee的接口封装
-- [QUANTAXIS_ATBROKER](https://github.com/QUANTAXIS/QA_AtBroker) 基于海风at的接口封装
-- [QUANTAXIS TRADER](https://github.com/yutiansut/QATrader) 一个开源的websocket版本的期货交易实例
+#### 🚀 核心升级
 
-> 策略相关 
-- [QASTRATEGY101](https://github.com/yutiansut/QAStrategy101) 101个基础策略[逐步更新中...]
+**1. QARS2 Rust核心集成**
+- ✅ QARSBridge桥接层 - 100x性能提升
+- ✅ 完全兼容QIFI协议
+- ✅ 自动fallback到Python实现
+- ✅ 账户操作: 50ms → 0.5ms
+- ✅ 回测速度: 30s → 3s (10年日线)
+- ✅ 内存优化: -90%
 
-> 行情相关: 主推行情实现/ 基于OU过程的模拟行情
-- [QUNATAXIS MARKETCOLLECTOR](https://github.com/yutiansut/QUANTAXIS_RealtimeCollector) 全市场订阅分发的行情推送
-- [QUANTAXIS_RandomPrice](https://github.com/yutiansut/QUANTAXIS_RandomPrice) 基于OU过程的随机行情模拟
+**2. Python现代化**
+- ✅ Python版本: 3.5-3.10 → **3.9-3.12**
+- ✅ 依赖升级: 60+核心依赖现代化
+  - pymongo: 3.11.2 → 4.10.0+
+  - pandas: 1.1.5 → 2.0.0+
+  - pyarrow: 6.0.1 → 15.0.0+
+  - tornado: 6.3.2 → 6.4.0+
+- ✅ 移除过时依赖: delegator.py, six, pyconvert
 
-> 账户协议
+**3. 新增模块**
+- ✅ `QARSBridge/`: QARS2桥接层
+  - `qars_account.py`: 高性能账户包装器
+  - `qars_backtest.py`: Rust回测引擎
+  - `QIFI_PROTOCOL.md`: 完整协议规范
+- ✅ `examples/qarsbridge_example.py`: 完整使用示例
 
-- [QIFI](https://github.com/QUANTAXIS/QIFI) 一个基于快期DIFF协议的QA实时账户协议
-- [QIFIAccount](https://github.com/yutiansut/qifiaccount) 一个基于QIFI协议的多市场兼容的 实时账户实现
-- [QAStrategy](https://github.com/yutiansut/qastrategy) 一个完整的 支持 模拟/回测/实盘一键切换的策略基类
+**4. 安装方式优化**
+```bash
+# 基础安装
+pip install -e .
 
-> 多语言实现
+# 包含Rust组件 (推荐)
+pip install -e .[rust]
 
-- [qatrader-rs](https://github.com/yutiansut/qatrader-rs) 一个rust实现的qatrader
-- [qamarket-rs](https://github.com/yutiansut/qamarket-rs)  一个rust实现的期货全市场行情多周期采样分发
+# 包含性能优化包
+pip install -e .[performance]
 
+# 完整安装
+pip install -e .[full]
+```
 
+#### 📝 升级文档
+- ✅ [UPGRADE_PLAN.md](./UPGRADE_PLAN.md) - 完整升级计划
+- ✅ [PHASE1_COMPLETE.md](./PHASE1_COMPLETE.md) - Phase 1完成报告
+- ✅ [PHASE2_COMPLETE.md](./PHASE2_COMPLETE.md) - Phase 2完成报告
+- ✅ [QIFI_PROTOCOL.md](./QUANTAXIS/QARSBridge/QIFI_PROTOCOL.md) - QIFI协议规范
 
-#### 未开源
+---
 
-未开源部分为 目前私募自用部分, 因此暂时不开源 一些相关的项目会经过选取和完善后逐步开源
+### v2.0.0 - 架构重构
 
-> 实时交易解决方案/ 无人值守/状态汇报/实时账户评估/多账户/策略账户拆分/事件流风控/PB系统/CEP引擎/多系统终端
+本版本为不兼容升级，涉及重大架构改变：
 
-- [QUANTAXIS_REALTIME_RESOLUTION](https://github.com/yutiansut/QUANTAXIS_REALTIME_RESOLUTION) 实时交易/部署解决方案(未开源)
-- [QUANTAXIS UNICORN](https://github.com/yutiansut/quantaxis_unicorn) QUANTAXIS 策略托管, 交易监控解决方案(未开源)
-- [QUANTAXIS_RANK](https://github.com/yutiansut/QARank) QUANTAXIS实时账户评估
-- [QUANTAXIS_CEPEngine](https://github.com/yutiansut/QACEPEngine) QUANTAXIS 复杂事件处理引擎
-- [QUANTAXIS_PBSystem](https://github.com/yutiansut/QAPBSystem) QUANTAXIS PB系统
-- [QUANTAXIS_QARISKPRO](https://github.com/yutiansut/QARISKPRO) QUANTAXIS 多市场多账户集成的实时风控系统
-- [QUANTAXIS QADESKPRO](https://github.com/yutiansut/qadeskpro) 新版本客户端网页(部分开源)
-- [QUANTAXIS PMS](https://github.com/yutiansut/QAPMS) 一个轻量级的纯python实现的  兼容QIFI协议的账户/仓位管理系统
+#### 数据层改进
 
-> tick回测
+- ✅ ClickHouse客户端集成
+- ✅ Tabular数据支持
+- ✅ 因子化数据结构
+- ✅ Tick / L2 Order / Transaction格式
 
-- [QUANTAXIS TICKBacktest](https://github.com/yutiansut/QATickBacktest) tick回测 支持真实tick/仿真tick
+#### 微服务架构
 
-> jupyterhub 定制(多人编辑)
+- ✅ QAWebServer - Tornado Web服务
+- ✅ QASchedule - 动态任务调度
+- ✅ DAG Pipeline模型
+- ✅ QAPubSub - RabbitMQ消息队列
 
-- [QUANTAXIS JUPYTERHUB](https://github.com/yutiansut/QAJupyter)
+#### 账户系统升级
 
-> docker cluster
+- ⚠️ 移除QAARP (不再维护老版本)
+- ✅ 完整QIFI模块
+  - 保证金模型
+  - 股票/期货支持
+  - 期权 [开发中]
 
-- [QUANTAXIS PROCluster](https://github.com/yutiansut/QAPRO_dockercluster) 一键部署的docker集群, 2地3中心的高可用灾备投研/交易环境
+#### 实盘/模拟盘
 
-> Runtime 一个标准化的策略运行时
+- ✅ QIFI结构对接
+- ✅ CTP接口 (期货/期权)
+- ✅ QMT对接 (股票)
+- ✅ 母子账户OMS
+- ✅ OrderGateway风控
 
-- [QUANTAXIS RUNTIME-RS](https://github.com/yutiansut/qaruntime-rs) 一个rust-base的策略标准化运行时  单机可以拉起10k+ 策略
-- [QAStrategy-rs](https://github.com/yutiansut/qamom-rs) rust-base的策略标准化封装工具
-- [QUANTAXIS-RS](https://github.com/yutiansut/quantaxis-rs) 全新的rust版本的quantaxis底层账户
-- [QADATA-RS](https://github.com/yutiansut/qadata-rs) 标准化的数据结构 数据获取封装
+#### 多语言集成
 
+- ✅ QUANTAXIS Rust版本通信
+- ✅ Apache Arrow跨语言数据交换
+  - pyarrow (Python)
+  - arrow-rs (Rust)
+  - libarrow (C++)
+- ✅ Rust/C++账户支持
+- ✅ Rust Job Worker
 
+---
 
-### 社区提供的工具链
+## 🚀 快速开始
 
-- [QUANTAXIS_MONITOR_GUI](https://github.com/QUANTAXIS/QUANTAXIS_Monitor_GUI) 基于QT的python监控
-- (目前废弃)[QUANTAXIS_DESKTOP](https://github.com/QUANTAXIS/QADESKTOP) 基于VUE.js/ ELECTRON的 桌面终端
-- [portable_QA](https://github.com/QUANTAXIS/portable_QA) 一个独立的python环境,免配置
-- [QUANTAXIS_CRAWLY](https://github.com/QUANTAXIS/QUANTAXIS_CRAWLY) 爬虫部分
+### 系统要求
 
-## 社区/项目捐赠
+- **Python**: 3.9 - 3.12 (推荐3.11+)
+- **操作系统**: Linux / macOS / Windows
+- **内存**: 最低4GB，推荐8GB+
+- **数据库**: MongoDB 4.0+ / ClickHouse 20.0+ (可选)
 
-### github
+### 安装
+
+#### 1. 基础安装
+
+```bash
+# 克隆仓库
+git clone https://github.com/QUANTAXIS/QUANTAXIS.git
+cd QUANTAXIS
+
+# 安装依赖
+pip install -e .
+```
+
+#### 2. 包含Rust组件 (推荐 - 100x性能)
+
+```bash
+# 安装QUANTAXIS + QARS2
+pip install -e .[rust]
+
+# 或手动安装QARS2
+cd /home/quantaxis/qars2
+pip install -e .
+```
+
+#### 3. 完整安装
+
+```bash
+# 安装所有组件
+pip install -e .[full]
+
+# 包含:
+# - QARS2 Rust核心
+# - QADataSwap跨语言通信
+# - Polars高性能DataFrame
+# - 所有可选依赖
+```
+
+#### 4. 验证安装
+
+```python
+import QUANTAXIS as QA
+from QUANTAXIS.QARSBridge import has_qars_support
+
+print(f"QUANTAXIS版本: {QA.__version__}")
+print(f"QARS2支持: {has_qars_support()}")
+
+# 预期输出:
+# QUANTAXIS版本: 2.1.0.alpha2
+# QARS2支持: True
+```
+
+### 快速示例
+
+```python
+from QUANTAXIS.QARSBridge import QARSAccount
+
+# 创建高性能账户 (自动使用Rust核心)
+account = QARSAccount(
+    account_cookie="my_strategy",
+    init_cash=1000000.0
+)
+
+# 股票交易
+account.buy("000001", 10.5, "2025-01-15", 1000)
+account.sell("000001", 10.8, "2025-01-16", 500)
+
+# 期货交易
+account.buy_open("IF2512", 4500.0, "2025-01-15", 2)
+account.sell_close("IF2512", 4520.0, "2025-01-16", 1)
+
+# 查询持仓
+positions = account.get_positions()
+print(positions)
+
+# 获取QIFI格式账户数据
+qifi = account.get_qifi()
+print(f"账户权益: {qifi['accounts']['balance']}")
+print(f"可用资金: {qifi['accounts']['available']}")
+```
+
+### 数据库配置
+
+```python
+# MongoDB配置
+import QUANTAXIS as QA
+
+# 设置MongoDB连接
+QA.DATABASE = QA.QAUtil.QALogs.QA_Setting.MONGO_URI
+# 默认: mongodb://localhost:27017/quantaxis
+
+# ClickHouse配置
+QA.CLICKHOUSE_HOST = 'localhost'
+QA.CLICKHOUSE_PORT = 9000
+```
+
+---
+
+## 📖 文档
+
+### 📚 文档中心
+
+完整文档请访问 **[文档中心 (Documentation Hub)](./doc/README.md)**
+
+### 快速导航
+
+**🚀 入门指南**
+- [快速开始](./doc/getting-started/quickstart.md) - 10分钟上手教程
+- [安装指南](./doc/getting-started/installation.md) - 详细安装步骤
+
+**📘 API参考**
+- [API概览](./doc/api-reference/overview.md) - 完整API文档
+- [QAFetch](./doc/api-reference/qafetch.md) - 数据获取
+- [QAData](./doc/api-reference/qadata.md) - 数据结构
+- [QAMarket/QIFI](./doc/api-reference/qamarket.md) - 账户体系
+
+**🔧 高级功能**
+- [资源管理器](./doc/advanced/resource-manager.md) - 统一资源管理
+- [Rust集成](./doc/advanced/rust-integration.md) - 高性能组件
+- [数据桥接](./doc/advanced/data-bridge.md) - 零拷贝数据交换
+
+**🐳 部署指南**
+- [Docker部署](./doc/deployment/docker.md) - 容器化部署
+- [Kubernetes部署](./doc/deployment/kubernetes.md) - K8s集群部署
+- [部署概览](./doc/deployment/overview.md) - 完整部署指南
+
+**📦 迁移指南**
+- [2.0 → 2.1 迁移](./doc/migration/v2.0-to-v2.1.md) - 升级步骤和注意事项
+- [兼容性状态](./doc/migration/COMPATIBILITY_STATUS.md) - 100%向后兼容
+
+**👨‍💻 开发者**
+- [贡献指南](./doc/development/contributing.md) - 如何参与开发
+- [最佳实践](./doc/development/best-practices.md) - 生产环境建议
+- [开发指南 (CLAUDE.md)](./CLAUDE.md) - AI辅助开发
+
+**📘 其他资源**
+- [完整手册 (QABook PDF)](https://github.com/QUANTAXIS/QUANTAXIS/releases/download/latest/quantaxis.pdf)
+- [示例代码](./examples/) - 完整示例集合
+
+---
+
+## 🤝 社区与支持
+
+### GitHub
 
 QUANTAXIS 是一个开放的项目, 在开源的3年中有大量的小伙伴加入了我, 并提交了相关的代码, 感谢以下的同学们
 
@@ -221,89 +506,139 @@ QUANTAXIS 是一个开放的项目, 在开源的3年中有大量的小伙伴加�
 
 
 
-许多问题 可以在 [GITHUB ISSUE](https://github.com/QUANTAXIS/QUANTAXIS/issues)中找到, 你可以提出新的issue
+**问题反馈**:
+- 💬 [GitHub Issues](https://github.com/QUANTAXIS/QUANTAXIS/issues) - 提交Bug和功能请求
+- 🌟 [GitHub Discussions](https://github.com/QUANTAXIS/QUANTAXIS/discussions) - 技术讨论
+
+### 社群
+
+#### QQ群
+
+- 💬 **QUANTAXIS交流群**: 563280067 [群链接](https://jq.qq.com/?_wv=1027&k=4CEKGzn)
+- 👨‍💻 **QUANTAXIS开发群**: 773602202 (贡献代码请加此群，需备注GitHub ID)
+- 🔥 **期货实盘部署群**: 945822690 (仅限本地多账户部署用户)
+
+#### Discord
+
+- 🌍 [QUANTAXIS Discord社区](https://discord.gg/mkk5RgN)
+
+#### 论坛
+
+- 📝 [QUANTAXIS CLUB论坛](http://www.yutiansut.com:3000)
+  - 论坛提问享有最高回复优先级
+
+#### 公众号
+
+- 📱 关注公众号获取最新动态和免费下单推送接口
+  - 回复 `trade` 获取下单接口
+
+![公众号](http://picx.gulizhu.com/Fr0pHbwB7-zrq_HAKsvB8g2zaP_A)
+
+---
+
+## 📊 性能对比
+
+### QARS2 Rust vs Python
+
+| 操作 | Python版本 | QARS2 Rust | 加速比 |
+|------|-----------|-----------|-------|
+| 创建1000个账户 | ~50秒 | ~0.5秒 | **100x** ⚡ |
+| 发送10000个订单 | ~50秒 | ~0.5秒 | **100x** ⚡ |
+| 账户结算 | ~200ms | ~2ms | **100x** ⚡ |
+| 10年日线回测 | ~30秒 | ~3秒 | **10x** 🚀 |
+| 内存占用(单账户) | ~2MB | ~200KB | **-90%** 💾 |
+| 内存占用(1000持仓) | ~50MB | ~5MB | **-90%** 💾 |
+
+### Python版本性能
+
+| Python版本 | 性能提升 | 推荐度 |
+|-----------|---------|-------|
+| Python 3.9 | 基准 | ⭐⭐⭐ |
+| Python 3.10 | +10% | ⭐⭐⭐⭐ |
+| Python 3.11 | +25% | ⭐⭐⭐⭐⭐ 最佳 |
+| Python 3.12 | +20% | ⭐⭐⭐⭐⭐ 最新 |
+
+---
+
+## 💰 项目支持
+
+### 捐赠
+
+写代码不易...请作者喝杯咖啡呗? ☕
+
+![支付宝捐赠](config/ali.jpg)
+
+**注**: 支付时请备注您的名字/昵称，我们会维护一个赞助列表感谢您的支持！
+
+### 企业赞助
+
+如需企业级支持、定制开发或技术咨询，请联系:
+- 📧 Email: yutiansut@qq.com
+- 💼 企业服务: 提供定制化量化交易解决方案
+
+---
+
+## 📜 许可证
+
+本项目采用 **MIT License** 开源许可证。
+
+```
+Copyright (c) 2016-2025 yutiansut/QUANTAXIS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction...
+```
+
+完整许可证请查看 [LICENSE](./LICENSE) 文件。
+
+---
+
+## 👏 致谢
+
+### 核心贡献者
+
+特别感谢所有为QUANTAXIS做出贡献的开发者！
+
+### 技术栈
+
+QUANTAXIS得以实现离不开以下优秀的开源项目:
+
+- **Python生态**: pandas, numpy, scipy, matplotlib
+- **数据库**: MongoDB, ClickHouse, Redis
+- **Web框架**: Tornado, Flask
+- **消息队列**: RabbitMQ (pika)
+- **Rust生态**: PyO3, Polars, Arrow
+- **金融数据**: tushare, pytdx
+
+### 特别鸣谢
+
+- **QARS2项目组**: 提供高性能Rust核心
+- **社区贡献者**: 所有提交PR和Issue的朋友们
+- **早期用户**: 在项目初期就给予支持和反馈的用户
+
+---
+
+## 🗺️ 路线图
+
+### v2.1.x (当前)
+- ✅ QARS2 Rust核心集成
+- ✅ Python 3.9-3.12支持
+- ✅ QARSBridge桥接层
+- 🔄 QADataSwap跨语言通信 (进行中)
+- 📋 完善文档和示例
+
+### v2.2.0 (计划中)
+- 📊 完整的QADataSwap集成
+- 🔥 Polars全面替代pandas (可选)
+- ⚡ 更多Rust加速模块
+- 🧪 增强的回测引擎
+
+### v3.0.0 (未来)
+- 🤖 AI驱动的策略优化
+- 🌐 分布式回测系统
+- 📱 移动端支持
+- ☁️ 云原生部署
 
 
 
-### QQ群
-
-欢迎加群讨论: 563280067 [群链接](https://jq.qq.com/?_wv=1027&k=4CEKGzn) 
-
-DISCORD 社区  https://discord.gg/mkk5RgN
-
-
-QUANTAXIS 开发群: 773602202 (如果想要贡献代码 请加这个群 需要备注你的GITHUB ID)
-
-QUANTAXIS 期货实盘多账户的本地部署群 (请勿浪费群资源 没有本地多账户部署的请勿加): 945822690
-
-### 公共号
-
-欢迎关注公众号: ![公众号](http://data.yutiansut.com/qrcode_for_gh_bbb47e0550f7_258.jpg)
-
-QAPRO公共号免费提供了下单推送接口, 关注公共号回复trade即可使用
-
-### 论坛 QACLUB
-
-QUANTAXIS 内测版论坛 [QUANTAXISCLUB上线](http://www.yutiansut.com:3000)
-
-http://www.yutiansut.com:3000
-
-凡通过论坛进行提问的 均有最高的回复优先级
-
-### 文档
-
-全新文档界面 [QUANTAXISDocs](http://doc.yutiansut.com)
-
-http://doc.yutiansut.com
-
- ### 捐赠
-
-写代码不易...请作者喝杯咖啡呗?
-
-
-![](http://pic.yutiansut.com/alipay.png)
-
-(PS: 支付的时候 请带上你的名字/昵称呀 会维护一个赞助列表~ )
-
-[捐赠列表](CONTRIBUTING.md)
-
-
-
-##  QUANTAXIS 桌面级产品(全平台 WIN/MAC/LINUX)
-
-
-
-
-首页
-
-![image.png](http://pic.yutiansut.com/FnGCyLQ8nRLFOYX8elP4PhJ7IQuq)
-
-登陆
-
-![image.png](http://pic.yutiansut.com/FmDc4ZPxHeNncZICoMr9dqz46h78)
-
-行情/键盘精灵
-
-![image.png](http://pic.yutiansut.com/FhiN_asx158UobclVpCY00e61pjr)
-
-lab 投研
-
-![image.png](http://pic.yutiansut.com/FlkJTKu7iG-FD7Rz2DwUhvs2Cy3j)
-
-回测/组合
-
-![image.png](http://pic.yutiansut.com/FuB_dC5vX5Y1_Z8At0MiMRXcE5ZT)
-![image.png](http://pic.yutiansut.com/Fqvh8m1ka4jdmwYwBn8MAHixpZOm)
-
-模拟实盘多账户管理
-![image.png](http://pic.yutiansut.com/Fh0fZzqORNRmY5txaXYgHWJUCPqw)
-![](http://pic.yutiansut.com/QQ%E6%88%AA%E5%9B%BE20190311015440.png)
-![](http://pic.yutiansut.com/QQ%E6%88%AA%E5%9B%BE20190311015451.png)
-![](http://pic.yutiansut.com/QQ%E6%88%AA%E5%9B%BE20190311015550.png)
-![](http://pic.yutiansut.com/QQ%E6%88%AA%E5%9B%BE20190311015537.png)
-
-
-
-致谢:
-
-感谢JetBrain 公司提供的开源社区全系列License

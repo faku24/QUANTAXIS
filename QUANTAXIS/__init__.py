@@ -2,7 +2,7 @@
 #
 # The MIT License (MIT)
 #
-# Copyright (c) 2016-2020 yutiansut/QUANTAXIS
+# Copyright (c) 2016-2025 yutiansut/QUANTAXIS
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -31,25 +31,38 @@ by yutiansut
 2017/4/8
 """
 
-__version__ = '1.9.32'
+__version__ = '2.1.0.alpha2'
 __author__ = 'yutiansut'
 
+# Rust集成支持检测
+try:
+    import qars3
+    __has_qars__ = True
+    __qars_version__ = getattr(qars3, '__version__', 'unknown')
+except ImportError:
+    __has_qars__ = False
+    __qars_version__ = None
+
+try:
+    import qadataswap
+    __has_dataswap__ = True
+    __dataswap_version__ = getattr(qadataswap, '__version__', 'unknown')
+except ImportError:
+    __has_dataswap__ = False
+    __dataswap_version__ = None
+
+import logging
+logging.disable(logging.INFO)
 import argparse
 # check
 import sys
 
 # CMD and Cli
 import QUANTAXIS.QACmd
-from QUANTAXIS.QAAnalysis import *
-from QUANTAXIS.QAApplication.QAAnalysis import QA_backtest_analysis_backtest
+
+
 # Backtest
-from QUANTAXIS.QAApplication.QABacktest import QA_Backtest
-from QUANTAXIS.QAApplication.QAResult import backtest_result_analyzer
-from QUANTAXIS.QAARP.QAAccount import QA_Account
-from QUANTAXIS.QAARP.QAPortfolio import QA_Portfolio, QA_PortfolioView
-from QUANTAXIS.QAARP.QARisk import QA_Performance, QA_Risk
-from QUANTAXIS.QAARP.QAStrategy import QA_Strategy
-from QUANTAXIS.QAARP.QAUser import QA_User
+
 from QUANTAXIS.QACmd import QA_cmd
 # Data
 from QUANTAXIS.QAData import (
@@ -92,7 +105,6 @@ from QUANTAXIS.QAData import (
 from QUANTAXIS.QAData.dsmethods import *
 # ENGINE
 from QUANTAXIS.QAEngine import (
-    QA_AsyncExec,
     QA_AsyncQueue,
     QA_AsyncScheduler,
     QA_AsyncTask,
@@ -147,7 +159,6 @@ from QUANTAXIS.QAFetch import (
     QA_fetch_get_security_bars,
     QA_fetch_get_stock_block,
     QA_fetch_get_stock_day,
-    QA_fetch_get_stock_indicator,
     QA_fetch_get_stock_info,
     QA_fetch_get_stock_list,
     QA_fetch_get_stock_min,
@@ -166,7 +177,8 @@ from QUANTAXIS.QAFetch import (
 from QUANTAXIS.QAFetch.Fetcher import QA_quotation
 from QUANTAXIS.QAFetch.QACrawler import (
     QA_fetch_get_sh_margin,
-    QA_fetch_get_sz_margin
+    QA_fetch_get_sz_margin,
+    QA_fetch_get_margin_all
 )
 from QUANTAXIS.QAFetch.QAQuery import (
     QA_fetch_account,
@@ -205,20 +217,8 @@ from QUANTAXIS.QAFetch.QAQuery import (
 from QUANTAXIS.QAFetch.QAQuery_Advance import *
 from QUANTAXIS.QAIndicator import *
 # market
-from QUANTAXIS.QAMarket import (
-    QA_BacktestBroker,
-    QA_Broker,
-    QA_Dealer,
-    QA_Market,
-    QA_Order,
-    QA_OrderHandler,
-    QA_OrderQueue,
-    QA_Position,
-    QA_RandomBroker,
-    QA_RealBroker,
-    QA_SimulatedBroker,
-    QA_TTSBroker
-)
+from QUANTAXIS.QAFetch.QAClickhouse import QACKClient
+
 from QUANTAXIS.QASetting.QALocalize import (
     cache_path,
     download_path,
@@ -277,34 +277,83 @@ from QUANTAXIS.QAUtil import (  # QAPARAMETER
     QA_util_to_list_from_numpy, QA_util_to_list_from_pandas,
     QA_util_to_pandas_from_json, QA_util_to_pandas_from_list, QA_util_web_ping,
     QATZInfo_CN, future_ip_list, info_ip_list, stock_ip_list, trade_date_sse,
-    QA_util_get_next_period)
+    QA_util_get_next_period, QA_util_get_real_tradeday)
 
-# Factor
-from QUANTAXIS.QAFactor.analyze import FactorAnalyzer
-from QUANTAXIS.QAFactor.data import DataApi
-from QUANTAXIS.QAFactor.preprocess import (
-    QA_fmt_factor,
-    QA_fetch_factor_weight,
-    QA_fetch_get_factor_groupby,
-    QA_standardize_factor,
-    QA_winsorize_factor
+# QAResourceManager - 统一资源管理器 (MongoDB/RabbitMQ/ClickHouse/Redis)
+try:
+    from QUANTAXIS.QAUtil.QAResourceManager import (
+        QAMongoResourceManager,
+        QARabbitMQResourceManager,
+        QAClickHouseResourceManager,
+        QARedisResourceManager,
+        QAResourcePool,
+        get_mongo_resource,
+        get_rabbitmq_resource,
+        get_clickhouse_resource,
+        get_redis_resource,
+    )
+except ImportError:
+    # 资源管理器依赖可选,不阻塞主模块加载
+    pass
+
+from QUANTAXIS.QAPubSub.consumer import subscriber, subscriber_topic, subscriber_routing
+from QUANTAXIS.QAPubSub.producer import publisher, publisher_topic, publisher_routing
+from QUANTAXIS.QAPubSub.base import base_ps
+from QUANTAXIS.QAPubSub.debugtoool import debug_sub, debug_pub
+
+
+from QUANTAXIS.QAWebServer.basehandles import QABaseHandler, QAWebSocketHandler
+from QUANTAXIS.QAWebServer.schedulehandler import QAScheduleQuery, QASchedulerHandler
+from QUANTAXIS.QAWebServer.server import start_server
+
+from QUANTAXIS.QIFI.QifiAccount import QIFI_Account
+from QUANTAXIS.QIFI.QifiManager import QA_QIFIMANAGER, QA_QIFISMANAGER
+
+# QAMarket - 市场预设和订单/持仓管理
+from QUANTAXIS.QAMarket import (
+    MARKET_PRESET,
+    QA_Order,
+    QA_OrderQueue,
+    QA_Position,
+    QA_PMS,
 )
-from QUANTAXIS.QAFactor.utils import QA_fmt_code_list
 
-# from QUANTAXIS.QASU.save_backtest import (
-#     QA_SU_save_account_message, QA_SU_save_backtest_message, QA_SU_save_account_to_csv)
+# QARSBridge - Rust高性能账户和回测 (如果可用)
+try:
+    from QUANTAXIS.QARSBridge import (
+        QARSAccount,
+        QARSBacktest,
+        has_qars_support,
+    )
+except ImportError:
+    # QARSBridge未安装，使用标准Python实现
+    pass
 
-# event driver
+# QADataBridge - 跨语言零拷贝数据交换 (如果可用)
+try:
+    from QUANTAXIS.QADataBridge import (
+        has_dataswap_support,
+        convert_pandas_to_polars,
+        convert_polars_to_pandas,
+        convert_pandas_to_arrow,
+        convert_arrow_to_pandas,
+        SharedMemoryWriter,
+        SharedMemoryReader,
+    )
+except ImportError:
+    # QADataBridge未安装，跨语言通信不可用
+    pass
 
-# Account,Risk,Portfolio,User,Strategy
+from QUANTAXIS.QAStrategy.qactabase import QAStrategyCtaBase
 
-# Setting
 
-# Util
+from QUANTAXIS.QAFactor.feature import QASingleFactor_DailyBase
+from QUANTAXIS.QAFactor.featurepool import MA10
+from QUANTAXIS.QAFactor.featureView import QAFeatureView
+from QUANTAXIS.QAFactor.featureAnalysis import QAFeatureAnalysis
+from QUANTAXIS.QAFactor.featurebacktest import QAFeatureBacktest
 
-#from QUANTAXIS.QAFetch.QATdx_adv import bat
-
-if sys.version_info.major != 3 or sys.version_info.minor not in [4, 5, 6, 7, 8]:
+if sys.version_info.major != 3 or sys.version_info.minor not in [4, 5, 6, 7, 8, 9]:
     print('wrong version, should be 3.4/3.5/3.6/3.7/3.8 version')
     sys.exit()
 
@@ -334,4 +383,3 @@ def __repr__():
 
 
 __str__ = __repr__
-# QA_util_log_info(Logo)
